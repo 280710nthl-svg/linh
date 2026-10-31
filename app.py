@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(page_title="Data Validator - Nhóm 10", layout="wide")
+st.set_page_config(page_title="Kiểm tra dữ liệu", layout="wide")
 
-st.title("📊 Ứng dụng kiểm tra chất lượng dữ liệu (DA13)")
-st.caption("Sản phẩm bài tập dự án Python - Nhóm 10")
+st.title("Check file ")
+st.caption("Trum CBN")
 
 # 1. Upload File
 uploaded_file = st.file_uploader("Tải lên file dữ liệu (.csv hoặc .xlsx)", type=["csv", "xlsx"])
