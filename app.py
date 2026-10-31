@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(page_title="Kiểm tra dữ liệu", layout="wide")
+st.set_page_config(page_title="Kiểm tra dữ liệu👽👽👽👽", layout="wide")
 
 st.title("Check file ")
 st.caption("Trum CBN")
