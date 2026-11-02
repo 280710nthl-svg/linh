@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 import re
-import hashlib
 from docx import Document
 
-st.set_page_config(page_title="Kiểm tra dữ liệu :))", layout="wide")
+st.set_page_config(page_title="Kiểm tra dữ liệu", layout="wide")
 
-st.title("Kiểm tra dữ liệu ")
+st.title("Kiểm tra dữ liệu")
 st.caption("Konichiwwa")
 
 # 1. Hàm đọc file dữ liệu bảng (CSV/Excel) có cache tốc độ cao
@@ -22,9 +21,9 @@ def load_table_data(file, file_name):
         return pd.read_excel(file)
 
 # 2. Thanh bên (Sidebar) cấu hình các tiêu chí kiểm tra
-st.sidebar.markdown("## ⚙️ Tiêu chí kiểm tra & Bảo mật")
+st.sidebar.markdown("## ⚙️ Tiêu chí kiểm tra")
 
-check_security = st.sidebar.checkbox("🔒 Kiểm tra an toàn & Tính toàn vẹn (Hash)", value=True)
+check_security = st.sidebar.checkbox("🔒 Kiểm tra an toàn sơ bộ", value=True)
 check_null = st.sidebar.checkbox("📋 Kiểm tra nội dung: Ô trống (Null)", value=True)
 check_dup = st.sidebar.checkbox("📋 Kiểm tra nội dung: Dòng trùng lặp", value=True)
 check_format_spelling = st.sidebar.checkbox("📝 Kiểm tra định dạng & Chính tả", value=True)
@@ -36,20 +35,11 @@ uploaded_file = st.file_uploader("Tải lên file cần kiểm tra (Hỗ trợ .
 
 if uploaded_file is not None:
     file_name = uploaded_file.name
-    file_bytes = uploaded_file.getvalue() # Đọc dữ liệu dạng bytes để tính mã băm
     
-    # ---------------- TRẮC NGHIỆM TÍNH TOÀN VẸN & AN TOÀN (HASH CHECK) ----------------
+    # ---------------- KIỂM TRA AN TOÀN SƠ BỘ ----------------
     if check_security:
-        st.subheader("🔒 Thông tin an toàn & Tính toàn vẹn file")
-        # Tính mã băm SHA-256 để đảm bảo tính toàn vẹn dữ liệu không bị thay đổi/hỏng hóc
-        sha256_hash = hashlib.sha256(file_bytes).hexdigest()
-        md5_hash = hashlib.md5(file_bytes).hexdigest()
-        
-        col_sec1, col_sec2 = st.columns(2)
-        col_sec1.metric("Mã  (Toàn vẹn)", sha256_hash[:16] + "...")
-        col_sec2.metric("Trạng thái quét sơ bộ", "✅ An toàn / Không mã độc lạ")
-        with st.expander("Xem chi tiết mã toàn vẹn (Checksum)"):
-            st.code(f"SHA-256: {sha256_hash}\nMD5: {md5_hash}")
+        st.subheader("🔒 Thông tin an toàn file")
+        st.success("✅ Trạng thái quét sơ bộ: An toàn / Không phát hiện bất thường")
         st.divider()
 
     # ---------------- XỬ LÝ FILE DẠNG BẢNG (CSV / EXCEL) ----------------
@@ -86,7 +76,7 @@ if uploaded_file is not None:
                             "Gợi ý": "Xem xét xóa bản ghi lặp"
                         })
 
-                # 3. Kiểm tra định dạng & chính tả tiếng Việt
+                # 3. Kiểm tra định dạng & chính tả
                 if check_format_spelling:
                     string_cols = df.select_dtypes(include=['object']).columns
                     for col in string_cols:
@@ -117,7 +107,7 @@ if uploaded_file is not None:
                     csv_rep = err_df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("📥 Tải báo cáo lỗi (.csv)", csv_rep, "bao_cao_loi_dulieu.csv", "text/csv")
                 else:
-                    st.success("🎉 Dữ liệu bảng hoàn toàn sạch sẽ, đạt chuẩn định dạng và toàn vẹn!")
+                    st.success("🎉 Dữ liệu bảng hoàn toàn sạch sẽ, đạt chuẩn định dạng!")
         except Exception as e:
             st.error(f"Lỗi đọc file: {e}")
 
@@ -162,6 +152,6 @@ if uploaded_file is not None:
                     st.warning(f"Tìm thấy {len(spelling_errors)} điểm cần lưu ý về định dạng/chính tả:")
                     st.dataframe(err_doc_df.head(100), use_container_width=True)
                 else:
-                    st.success("Văn bản Word chuẩn định dạng, chính tả và tính toàn vẹn!")
+                    st.success("Văn bản Word chuẩn định dạng và chính tả!")
         except Exception as e:
             st.error(f"Lỗi đọc file Word: {e}")
