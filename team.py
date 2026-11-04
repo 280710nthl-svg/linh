@@ -4,19 +4,53 @@ import time
 import pandas as pd
 import streamlit as st
 
+# Cấu hình giao diện trang web
 st.set_page_config(
-    page_title="DA11 - Xử Lý Nền, Khôi Phục & Quản Lý Phiên", layout="wide"
+    page_title="DA11 - Hệ Thống Nhập Dữ Liệu Thông Minh",
+    page_icon="📊",
+    layout="wide",
 )
 
-DB_NAME = "da11_advanced.db"
+# Tùy chỉnh giao diện đồ họa đẹp mắt bằng CSS (Pure Python injection)
+st.markdown(
+    """
+    <style>
+        .main { background-color: #f8f9fa; }
+        .stButton>button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 0.6rem 1.2rem;
+            font-weight: bold;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stButton>button:hover {
+            opacity: 0.9;
+        }
+        .metric-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
+DB_NAME = "da11_database.db"
 
 
-# 1. Khởi tạo Cơ sở dữ liệu SQLite
+# ---------------------------------------------------------
+# KHỞI TẠO CƠ SỞ DỮ LIỆU SQLITE
+# ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
 
-    # Bảng quản lý phiên nhập (hỗ trợ lưu vết và khôi phục tiến trình)
+    # Bảng quản lý phiên nhập (Hỗ trợ khôi phục khi gián đoạn)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS import_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,12 +59,12 @@ def init_db():
             processed_rows INTEGER DEFAULT 0,
             valid_rows INTEGER DEFAULT 0,
             invalid_rows INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'RUNNING', -- RUNNING, PAUSED, COMPLETED
+            status TEXT DEFAULT 'RUNNING',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
-    # Bảng lưu dữ liệu hợp lệ
+    # Bảng lưu trữ dữ liệu hợp lệ
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS valid_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +75,7 @@ def init_db():
         )
     """)
 
-    # Bảng lưu vết dòng lỗi
+    # Bảng lưu vết các dòng bị lỗi cấu trúc / dữ liệu
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS invalid_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,31 +93,34 @@ def init_db():
 init_db()
 
 
-# 2. Logic Kiểm tra cấu trúc & tính hợp lệ từng dòng
+# ---------------------------------------------------------
+# KIỂM TRA TÍNH HỢP LỆ TỪNG DÒNG
+# ---------------------------------------------------------
 def validate_row(row):
     errors = []
     name = str(row.get("name", "")).strip()
     email = str(row.get("email", "")).strip()
 
     if not name or pd.isna(row.get("name")):
-        errors.append("Tên bị trống")
+        errors.append("Tên bị để trống")
 
     if not email or "@" not in email or pd.isna(row.get("email")):
-        errors.append("Email sai định dạng (thiếu @)")
+        errors.append("Email không hợp lệ (thiếu @)")
 
     try:
         age = int(row.get("age"))
         if age <= 0 or age > 120:
             errors.append("Tuổi phải từ 1 đến 120")
     except (ValueError, TypeError):
-        errors.append("Tuổi không phải là số")
+        errors.append("Tuổi không phải là số nguyên")
 
     return errors
 
 
-# 3. Hàm Xử Lý Nền (Background Processing Worker)
+# ---------------------------------------------------------
+# XỬ LÝ NỀN (BACKGROUND THREADING & RESUME)
+# ---------------------------------------------------------
 def process_data_background(session_id, df, start_row=0):
-    """Chạy ngầm trong một Thread riêng biệt, hỗ trợ resume từ start_row."""
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
 
@@ -110,7 +147,7 @@ def process_data_background(session_id, df, start_row=0):
                     (session_id, row_num, str(row.to_dict()), "; ".join(errors))
                 )
 
-            # Ghi batch vào DB mỗi 50 dòng hoặc khi kết thúc
+            # Ghi batch vào DB mỗi 50 dòng để tối ưu hiệu suất xử lý 5000+ dòng
             if len(batch_valid) + len(batch_invalid) >= 50 or index == len(df) - 1:
                 if batch_valid:
                     cursor.executemany(
@@ -123,7 +160,6 @@ def process_data_background(session_id, df, start_row=0):
                         batch_invalid,
                     )
 
-                # Cập nhật tiến độ xử lý vào bảng phiên
                 cursor.execute(
                     """
                     UPDATE import_sessions 
@@ -139,47 +175,58 @@ def process_data_background(session_id, df, start_row=0):
                 batch_valid.clear()
                 batch_invalid.clear()
 
-            # Giả lập độ trễ nhẹ giúp hệ thống mượt mà
-            time.sleep(0.001)
+            time.sleep(0.0005)  # Giả lập độ trễ siêu nhỏ cho tiến trình mượt mà
 
-        # Đánh dấu phiên đã hoàn thành
         cursor.execute(
             "UPDATE import_sessions SET status = 'COMPLETED' WHERE id = ?",
             (session_id,),
         )
         conn.commit()
     except Exception as e:
-        print(f"Lỗi tiến trình nền: {e}")
+        print(f"Lỗi hệ thống nền: {e}")
     finally:
         conn.close()
 
 
-# 4. Giao diện Streamlit
-st.title("⚡ DA11 - Xử Lý Nền, Khôi Phục & Quản Lý Phiên")
-
-tab1, tab2, tab3 = st.tabs(
-    ["📥 Nhập File Mới", "🔄 Quản Lý & Tiếp Tục Phiên", "📜 Lịch Sử & Báo Cáo"]
+# ---------------------------------------------------------
+# GIAO DIỆN CHÍNH (STREAMLIT UI)
+# ---------------------------------------------------------
+st.title("🚀 DA11 - Quản Lý Nhập Dữ Liệu & Theo Dõi Tiến Trình")
+st.markdown(
+    "Ứng dụng thông minh xử lý file lớn (5000+ dòng), kiểm tra cấu trúc nghiêm ngặt, xử lý nền độc lập và khôi phục khi gián đoạn."
 )
 
-# --- TAB 1: NHẬP FILE MỚI ---
+tab1, tab2, tab3 = st.tabs(
+    ["📥 Tải Lên & Nhập File", "🔄 Tiến Trình & Khôi Phục", "📜 Lịch Sử & Báo Cáo"]
+)
+
+# --- TAB 1: TẢI LÊN FILE CSV ---
 with tab1:
-    st.subheader("Tải lên file CSV dữ liệu lớn")
+    st.subheader("Tải lên file dữ liệu CSV")
+    st.info(
+        "💡 **Yêu cầu cấu trúc:** File bắt buộc phải chứa các cột: `name`, `email`, `age`."
+    )
+
     uploaded_file = st.file_uploader(
-        "Chọn file CSV (Yêu cầu cột: name, email, age)", type=["csv"]
+        "Chọn file CSV của bạn tại đây", type=["csv"]
     )
 
     if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
-        st.success(f"📊 Đã nạp file: **{uploaded_file.name}** ({len(df)} dòng)")
+        st.success(
+            f"✅ Đã tải file thành công: **{uploaded_file.name}** (Tổng số dòng: **{len(df):,}**)"
+        )
 
         req_cols = {"name", "email", "age"}
         if not req_cols.issubset(set(df.columns)):
             st.error(
-                f"❌ Sai cấu trúc cột! File cần có các cột: {', '.join(req_cols)}"
+                f"❌ **Lỗi cấu trúc file!** Thiếu các cột bắt buộc: `{req_cols - set(df.columns)}`"
             )
         else:
-            if st.button("🚀 Bắt đầu xử lý nền"):
-                # Tạo phiên mới trong cơ sở dữ liệu
+            with st.expander("🔍 Xem trước 5 dòng đầu tiên"):
+                st.dataframe(df.head(), use_container_width=True)
+
+            if st.button("🚀 Bắt Đầu Xử Lý Nền (Background Process)"):
                 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
                 cursor = conn.cursor()
                 cursor.execute(
@@ -190,12 +237,12 @@ with tab1:
                 conn.commit()
                 conn.close()
 
-                # Lưu DataFrame vào session_state để hỗ trợ tính năng Resume
-                if "uploaded_dfs" not in st.session_state:
-                    st.session_state["uploaded_dfs"] = {}
-                st.session_state["uploaded_dfs"][session_id] = df
+                # Lưu DataFrame vào session_state để hỗ trợ resume khi cần
+                if "cached_dfs" not in st.session_state:
+                    st.session_state["cached_dfs"] = {}
+                st.session_state["cached_dfs"][session_id] = df
 
-                # Khởi chạy luồng chạy ngầm (Background Thread)
+                # Khởi chạy Thread chạy ngầm độc lập
                 thread = threading.Thread(
                     target=process_data_background, args=(session_id, df, 0)
                 )
@@ -203,15 +250,15 @@ with tab1:
                 thread.start()
 
                 st.success(
-                    f"✅ Đã khởi chạy tiến trình xử lý nền cho Phiên #{session_id}!"
+                    f"🎉 Đã khởi chạy tiến trình nền cho Phiên **#{session_id}**!"
                 )
-                st.info(
-                    "👉 Chuyển sang tab **'Quản Lý & Tiếp Tục Phiên'** để theo dõi thanh tiến độ thời gian thực."
+                st.warning(
+                    "👉 Hãy chuyển sang tab **'Tiến Trình & Khôi Phục'** để theo dõi biểu đồ thời gian thực."
                 )
 
-# --- TAB 2: QUẢN LÝ TIẾN TRÌNH & RESUME KHI GIÁN ĐOẠN ---
+# --- TAB 2: QUẢN LÝ TIẾN TRÌNH & RESUME ---
 with tab2:
-    st.subheader("🔄 Theo dõi tiến độ thời gian thực & Khôi phục")
+    st.subheader("📊 Theo Dõi Tiến Độ Thời Gian Thực & Khôi Phục Gián Đoạn")
 
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     sessions_df = pd.read_sql_query(
@@ -222,93 +269,103 @@ with tab2:
     if not sessions_df.empty:
         st.dataframe(sessions_df, use_container_width=True)
 
-        session_id_input = st.selectbox(
-            "Chọn ID Phiên để tương tác:", sessions_df["id"].tolist()
+        selected_id = st.selectbox(
+            "Chọn ID Phiên cần theo dõi/thao tác:", sessions_df["id"].tolist()
         )
 
-        if session_id_input:
+        if selected_id:
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-            row_info = pd.read_sql_query(
-                f"SELECT * FROM import_sessions WHERE id = {session_id_input}",
-                conn,
+            info = pd.read_sql_query(
+                f"SELECT * FROM import_sessions WHERE id = {selected_id}", conn
             ).iloc[0]
             conn.close()
 
-            total = row_info["total_rows"]
-            processed = row_info["processed_rows"]
-            status = row_info["status"]
+            total = info["total_rows"]
+            processed = info["processed_rows"]
+            status = info["status"]
+            valid = info["valid_rows"]
+            invalid = info["invalid_rows"]
             pct = processed / total if total > 0 else 0
 
+            # Hiển thị đồ họa tiến độ đẹp mắt
             st.progress(pct)
-            st.write(
-                f"Trạng thái: **{status}** | Đã xử lý: **{processed}/{total}** dòng ({(pct*100):.1f}%)"
-            )
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🔄 Làm mới trạng thái"):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Tổng số dòng", f"{total:,}")
+            c2.metric("Đã xử lý", f"{processed:,} ({pct*100:.1f}%)")
+            c3.metric("Hợp lệ (Đã lưu)", f"{valid:,}")
+            c4.metric("Dòng lỗi", f"{invalid:,}")
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("🔄 Làm Mới Trạng Thái"):
                     st.rerun()
 
-            with col2:
+            with col_btn2:
                 if status != "COMPLETED" and processed < total:
-                    if st.button("▶️ Tiếp tục chạy từ điểm dừng (Resume)"):
+                    if st.button("▶️ Tiếp Tục Chạy (Resume khi gián đoạn)"):
                         if (
-                            "uploaded_dfs" in st.session_state
-                            and session_id_input in st.session_state["uploaded_dfs"]
+                            "cached_dfs" in st.session_state
+                            and selected_id in st.session_state["cached_dfs"]
                         ):
-                            df_cached = st.session_state["uploaded_dfs"][
-                                session_id_input
-                            ]
-                            # Tiếp tục chạy từ vị trí processed hiện tại
-                            thread = threading.Thread(
+                            df_res = st.session_state["cached_dfs"][selected_id]
+                            t_resume = threading.Thread(
                                 target=process_data_background,
-                                args=(session_id_input, df_cached, processed),
+                                args=(selected_id, df_res, processed),
                             )
-                            thread.daemon = True
-                            thread.start()
+                            t_resume.daemon = True
+                            t_resume.start()
                             st.success(
-                                f"Đã tiếp tục xử lý phiên #{session_id_input} từ dòng {processed + 1}!"
+                                f"Đã tiếp tục tiến trình cho Phiên #{selected_id} từ dòng {processed + 1}!"
                             )
                             st.rerun()
                         else:
                             st.error(
-                                "⚠️ Vui lòng chọn lại file CSV ở Tab 1 để đưa vào bộ nhớ tạm trước khi tiếp tục."
+                                "⚠️ Vui lòng chọn lại file CSV tương ứng ở Tab 1 để bộ nhớ tạm ghi nhận dữ liệu resume."
                             )
     else:
-        st.info("Chưa có phiên nhập nào.")
+        st.info("Chưa ghi nhận phiên nhập liệu nào trong hệ thống.")
 
 # --- TAB 3: LỊCH SỬ & XUẤT BÁO CÁO LỖI ---
 with tab3:
-    st.subheader("📜 Lịch sử & Xuất báo cáo dòng lỗi")
+    st.subheader("📜 Lịch Sử Phiên Nhập & Tải Báo Cáo Lỗi")
+
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-    all_sessions = pd.read_sql_query(
+    history_df = pd.read_sql_query(
         "SELECT * FROM import_sessions ORDER BY id DESC", conn
     )
-    st.dataframe(all_sessions, use_container_width=True)
+    st.dataframe(history_df, use_container_width=True)
 
-    view_session_id = st.number_input(
-        "Nhập ID phiên muốn kiểm tra dòng lỗi:",
+    view_id = st.number_input(
+        "Nhập ID Phiên muốn xem danh sách dòng lỗi chi tiết:",
         min_value=1,
         step=1,
         value=1,
     )
 
-    if st.button("🔍 Lọc danh sách dòng lỗi"):
-        error_df = pd.read_sql_query(
-            f"SELECT row_number AS 'Dòng số', raw_data AS 'Dữ liệu gốc', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_session_id}",
+    if st.button("🔍 Trích Xuất Báo Cáo Lỗi"):
+        err_df = pd.read_sql_query(
+            f"SELECT row_number AS 'Dòng số', raw_data AS 'Dữ liệu gốc', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_id}",
             conn,
         )
-        if not error_df.empty:
-            st.error(f"Tìm thấy {len(error_df)} dòng lỗi:")
-            st.dataframe(error_df, use_container_width=True)
 
-            csv_err = error_df.to_csv(index=False).encode("utf-8")
+        if not err_df.empty:
+            st.error(
+                f"⚠️ Phát hiện tổng cộng **{len(err_df)}** dòng lỗi ở Phiên #{view_id}:"
+            )
+            st.dataframe(err_df, use_container_width=True)
+
+            # Nút tải file báo cáo lỗi CSV
+            csv_error_bytes = err_df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                label="📥 Tải file báo cáo dòng lỗi (CSV)",
-                data=csv_err,
-                file_name=f"bao_cao_loi_phien_{view_session_id}.csv",
+                label="📥 Tải Xuống File Báo Cáo Lỗi (CSV)",
+                data=csv_error_bytes,
+                file_name=f"bao_cao_loi_phien_{view_id}.csv",
                 mime="text/csv",
             )
         else:
-            st.success("Phiên này không có dòng lỗi nào!")
+            st.success(
+                f"🎉 Phiên #{view_id} hoàn toàn sạch sẽ, không có dòng nào bị lỗi!"
+            )
+
     conn.close()
