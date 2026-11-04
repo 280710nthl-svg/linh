@@ -62,13 +62,13 @@ def init_db():
 init_db()
 
 
-# 3. Hàm đọc file & tự động chuẩn hóa tên cột (Ghi tên nếu có, không có ghi số cột)
+# 3. Hàm đọc file & tự động chuẩn hóa tên cột
 def load_uploaded_file(uploaded_file):
     file_name = uploaded_file.name.lower()
     try:
         if file_name.endswith(".csv"):
             try:
-                df = pd.read_csv(uploaded_file, encoding="utf-8")
+                df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
             except:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding="latin1")
@@ -107,7 +107,7 @@ def validate_row(row, required_cols):
     return errors
 
 
-# 5. Hàm Xử Lý Nền (Background Processing Thread & Resume)
+# 5. Hàm Xử Lý Dữ Liệu Độc Lập (Hỗ trợ chạy ngầm & Tiếp tục khi gián đoạn)
 def process_data_background(session_id, df, required_cols, start_row=0):
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -176,7 +176,7 @@ def process_data_background(session_id, df, required_cols, start_row=0):
         )
         conn.commit()
     except Exception as e:
-        print(f"Lỗi tiến trình nền: {e}")
+        print(f"Lỗi tiến trình: {e}")
     finally:
         conn.close()
 
@@ -184,7 +184,7 @@ def process_data_background(session_id, df, required_cols, start_row=0):
 # 6. Giao diện Streamlit chính
 st.title("⚡ DA11 - Quản Lý Nhập Dữ Liệu & Theo Dõi Tiến Trình")
 st.caption(
-    "Ứng dụng xử lý file lớn, chạy ngầm độc lập, khôi phục khi gián đoạn và xuất báo cáo kiểm tra chi tiết."
+    "Ứng dụng xử lý tệp lớn, chạy độc lập mượt mà, khôi phục khi gián đoạn và xuất báo cáo kiểm tra chi tiết."
 )
 
 tab1, tab2, tab3 = st.tabs(
@@ -195,7 +195,7 @@ tab1, tab2, tab3 = st.tabs(
     ]
 )
 
-# --- TAB 1: TẢI FILE & KHỞI CHẠY XỬ LÝ NỀN ---
+# --- TAB 1: TẢI FILE & KHỞI CHẠY XỬ LÝ ---
 with tab1:
     st.subheader("1. Tải lên tệp dữ liệu (Hỗ trợ CSV, Excel, JSON)")
     uploaded_file = st.file_uploader(
@@ -220,7 +220,8 @@ with tab1:
                 default=all_cols[: min(2, len(all_cols))],
             )
 
-            if st.button("🚀 Bắt Đầu Xử Lý Nền (Background Thread)"):
+            # Nút bấm đã được Việt hóa gọn gàng
+            if st.button("🚀 Bắt Đầu Xử Lý Dữ Liệu"):
                 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
                 cursor = conn.cursor()
                 cursor.execute(
@@ -243,7 +244,7 @@ with tab1:
                 thread.start()
 
                 st.success(
-                    f"🎉 Đã khởi tạo và chạy ngầm thành công Phiên nhập **#{session_id}**!"
+                    f"🎉 Đã khởi tạo và bắt đầu xử lý thành công Phiên nhập **#{session_id}**!"
                 )
                 st.info(
                     "👉 Hãy chuyển sang Tab **'Quản Lý Phiên & Tiếp Tục (Resume)'** để theo dõi tiến trình thời gian thực."
@@ -356,7 +357,7 @@ with tab3:
 """
     st.download_button(
         label="📥 Tải Xuống File Tổng Kết Yêu Cầu Cần Đạt (TXT)",
-        data=report_content.encode("utf-8"),
+        data=report_content.encode("utf-8-sig"),
         file_name="Bao_Cao_Yeu_Can_Dat_DA11.txt",
         mime="text/plain",
     )
@@ -371,7 +372,7 @@ with tab3:
 
     if st.button("🔍 Trích Xuất Danh Sách Dòng Lỗi"):
         err_df = pd.read_sql_query(
-            f"SELECT row_number AS 'Dòng số', raw_data AS 'Dữ liệu gốc', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_id}",
+            f"SELECT row_number AS 'Dòng số', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_id}",
             conn,
         )
 
@@ -381,7 +382,7 @@ with tab3:
             )
             st.dataframe(err_df, use_container_width=True)
 
-            csv_bytes = err_df.to_csv(index=False).encode("utf-8")
+            csv_bytes = err_df.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
                 label="📥 Tải Xuống File Báo Cáo Lỗi (CSV)",
                 data=csv_bytes,
