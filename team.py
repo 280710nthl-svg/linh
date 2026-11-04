@@ -135,7 +135,7 @@ with tab1:
 
             st.success("🎉 Hoàn tất quá trình xử lý!")
 
-            # Thẻ thống kê (Metric Cards) đẹp mắt - Đã sửa lỗi delta_color
+            # Thẻ thống kê (Metric Cards) đẹp mắt
             m1, m2, m3 = st.columns(3)
             m1.metric(
                 label="📁 Tổng số dòng",
@@ -151,7 +151,7 @@ with tab1:
                 label="⚠️ Dòng lỗi",
                 value=f"{invalid_count:,}",
                 delta=f"-{(invalid_count/total*100):.1f}%",
-                delta_color="inverse",  # Đã sửa thành delta_color đúng chuẩn Streamlit
+                delta_color="inverse",
             )
 
 # --- TAB 2: ĐỒ HỌA TRỰC QUAN ---
@@ -194,6 +194,13 @@ with tab3:
             st.error(f"Phát hiện {len(err_df)} dòng lỗi tại phiên #{sid}:")
             st.dataframe(err_df, use_container_width=True)
 
+            # Nút tải file báo cáo lỗi (Đã đóng ngoặc đầy đủ và chính xác)
             st.download_button(
                 label="📥 Tải Báo Cáo Lỗi (CSV)",
-                data=err_df.to_csv
+                data=err_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"bao_cao_loi_phien_{sid}.csv",
+                mime="text/csv",
+            )
+        else:
+            st.success("Phiên này không có dòng lỗi nào!")
+    conn.close()
