@@ -154,7 +154,7 @@ with tab1:
                 delta_color="inverse",
             )
 
-# --- TAB 2: ĐỒ HỌA TRỰC QUAN ---
+# --- TAB 2: ĐỒ HỌA TRỰC QUAN (ĐÃ VIỆT HÓA CHÚ THÍCH) ---
 with tab2:
     st.subheader("📈 Biểu đồ trực quan hóa dữ liệu qua các phiên")
     conn = sqlite3.connect(DB_NAME)
@@ -163,8 +163,16 @@ with tab2:
 
     if not history_df.empty:
         st.write("#### Thống kê kết quả kiểm tra theo từng phiên nhập")
-        chart_data = history_df[["id", "valid_rows", "invalid_rows"]].set_index(
-            "id"
+        # Đổi tên cột trực tiếp để biểu đồ hiển thị tiếng Việt ở chú thích (legend)
+        chart_data = (
+            history_df[["id", "valid_rows", "invalid_rows"]]
+            .rename(
+                columns={
+                    "valid_rows": "Dòng hợp lệ",
+                    "invalid_rows": "Dòng lỗi",
+                }
+            )
+            .set_index("id")
         )
         st.bar_chart(chart_data)
     else:
@@ -194,7 +202,6 @@ with tab3:
             st.error(f"Phát hiện {len(err_df)} dòng lỗi tại phiên #{sid}:")
             st.dataframe(err_df, use_container_width=True)
 
-            # Nút tải file báo cáo lỗi (Đã đóng ngoặc đầy đủ và chính xác)
             st.download_button(
                 label="📥 Tải Báo Cáo Lỗi (CSV)",
                 data=err_df.to_csv(index=False).encode("utf-8"),
