@@ -3,13 +3,14 @@ import time
 import pandas as pd
 import streamlit as st
 
-# 1. Cấu hình trang Dashboard
+# 1. Cấu hình giao diện Dashboard
 st.set_page_config(
-    page_title="DA11 - Quản Lý Dữ Liệu Thông Minh", page_icon="⚡", layout="wide"
+    page_title="DA11 - Hệ Thống Nhập & Kiểm Tra Dữ Liệu",
+    page_icon="⚡",
+    layout="wide",
 )
 
-# Sử dụng các component native của Streamlit để tạo giao diện đẹp mà không cần HTML thuần
-DB_NAME = "da11_ui_surcharge.db"
+DB_NAME = "da11_ui_app.db"
 
 
 def init_db():
@@ -40,38 +41,36 @@ def init_db():
 init_db()
 
 # 2. Tiêu đề Dashboard phong cách chuyên nghiệp
-st.title("📊 Hệ Thống Nhập & Kiểm Tra Dữ Liệu Tự Động")
-st.markdown(
-    "Ứng dụng phân tích file linh hoạt, tách dòng lỗi thông minh, hiển thị tiến độ và biểu đồ trực quan."
+st.title("📊 DA11 - Quản Lý Nhập Dữ Liệu & Theo Dõi Tiến Trình")
+st.caption(
+    "Ứng dụng phân tích dữ liệu đa định dạng, hiển thị tiến độ thời gian thực, tách dòng lỗi thông minh và vẽ biểu đồ trực quan."
 )
 
-# Tạo các tab phân vùng giao diện rõ ràng
 tab1, tab2, tab3 = st.tabs(
     ["📥 Nhập File & Kiểm Tra", "📈 Biểu Đồ Thống Kê", "📜 Lịch Sử & Báo Cáo"]
 )
 
 # --- TAB 1: NHẬP FILE & XỬ LÝ ---
 with tab1:
-    st.subheader("Tải lên tệp dữ liệu của bạn")
+    st.subheader("1. Tải lên tệp dữ liệu")
     uploaded_file = st.file_uploader(
-        "Hỗ trợ file CSV, Excel (.xlsx)", type=["csv", "xlsx", "xls"]
+        "Hỗ trợ file CSV, Excel (.xlsx, .xls)", type=["csv", "xlsx", "xls"]
     )
 
     if uploaded_file is not None:
-        # Đọc file tự động theo định dạng
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
 
         st.success(
-            f"Đã tải thành công file: **{uploaded_file.name}** ({len(df):,} dòng dữ liệu)"
+            f"✅ Đã tải file: **{uploaded_file.name}** ({len(df):,} dòng dữ liệu)"
         )
 
-        with st.expander("🔍 Xem trước dữ liệu đầu vào"):
+        with st.expander("🔍 Xem trước 5 dòng đầu tiên"):
             st.dataframe(df.head(), use_container_width=True)
 
-        # Chọn cột bắt buộc kiểm tra
+        st.subheader("2. Chọn quy tắc kiểm tra dữ liệu")
         all_cols = df.columns.tolist()
         target_cols = st.multiselect(
             "Chọn các cột yêu cầu KHÔNG ĐƯỢC ĐỂ TRỐNG:",
@@ -111,7 +110,7 @@ with tab1:
                     err_msg = "; ".join(errors)
                     invalid_records.append((session_id, row_num, err_msg))
 
-                # Cập nhật thanh tiến độ đồ họa mượt mà
+                # Cập nhật tiến độ
                 if row_num % max(1, total // 100) == 0 or row_num == total:
                     pct = row_num / total
                     progress_bar.progress(pct)
@@ -119,7 +118,7 @@ with tab1:
                         f"Đang xử lý: {row_num}/{total} dòng ({(pct*100):.1f}%)"
                     )
 
-            # Lưu vào Database
+            # Lưu dòng lỗi
             if invalid_records:
                 cursor.executemany(
                     "INSERT INTO invalid_data (session_id, row_number, error_reason) VALUES (?, ?, ?)",
@@ -134,9 +133,9 @@ with tab1:
             conn.commit()
             conn.close()
 
-            st.success("🎉 Hoàn tất quá trình xử lý và kiểm tra dữ liệu!")
+            st.success("🎉 Hoàn tất quá trình xử lý!")
 
-            # Hiển thị khối Thẻ Thống Kê (Metrics Cards) đẹp mắt bằng Python
+            # Thẻ thống kê (Metric Cards) đẹp mắt - Đã sửa lỗi delta_color
             m1, m2, m3 = st.columns(3)
             m1.metric(
                 label="📁 Tổng số dòng",
@@ -152,31 +151,28 @@ with tab1:
                 label="⚠️ Dòng lỗi",
                 value=f"{invalid_count:,}",
                 delta=f"-{(invalid_count/total*100):.1f}%",
-                delta_value_color="inverse",
+                delta_color="inverse",  # Đã sửa thành delta_color đúng chuẩn Streamlit
             )
 
 # --- TAB 2: ĐỒ HỌA TRỰC QUAN ---
 with tab2:
-    st.subheader("📈 Biểu đồ trực quan hóa kết quả kiểm tra")
+    st.subheader("📈 Biểu đồ trực quan hóa dữ liệu qua các phiên")
     conn = sqlite3.connect(DB_NAME)
     history_df = pd.read_sql_query("SELECT * FROM import_sessions", conn)
     conn.close()
 
     if not history_df.empty:
-        # Sử dụng biểu đồ tích hợp sẵn cực kỳ sinh động của Streamlit (không cần HTML)
-        st.write("### Tỷ lệ phân bổ giữa dòng Hợp lệ và Dòng lỗi qua các phiên")
+        st.write("#### Thống kê kết quả kiểm tra theo từng phiên nhập")
         chart_data = history_df[["id", "valid_rows", "invalid_rows"]].set_index(
             "id"
         )
         st.bar_chart(chart_data)
     else:
-        st.info(
-            "Chưa có dữ liệu thống kê. Vui lòng nhập file ở Tab 1 để xem biểu đồ."
-        )
+        st.info("Chưa có dữ liệu. Hãy nhập file ở Tab 1 để xem biểu đồ.")
 
 # --- TAB 3: LỊCH SỬ & BÁO CÁO LỖI ---
 with tab3:
-    st.subheader("📜 Lịch sử các phiên nhập liệu & Xuất báo cáo lỗi")
+    st.subheader("📜 Quản lý phiên & Xuất file báo cáo dòng lỗi")
     conn = sqlite3.connect(DB_NAME)
     sessions = pd.read_sql_query(
         "SELECT * FROM import_sessions ORDER BY id DESC", conn
@@ -184,9 +180,12 @@ with tab3:
     st.dataframe(sessions, use_container_width=True)
 
     sid = st.number_input(
-        "Nhập ID phiên để xem chi tiết lỗi:", min_value=1, step=1, value=1
+        "Nhập ID phiên để kiểm tra danh sách lỗi:",
+        min_value=1,
+        step=1,
+        value=1,
     )
-    if st.button("🔍 Xem Chi Tiết Lỗi"):
+    if st.button("🔍 Trích Xuất Dòng Lỗi"):
         err_df = pd.read_sql_query(
             f"SELECT row_number AS 'Dòng số', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {sid}",
             conn,
@@ -195,13 +194,6 @@ with tab3:
             st.error(f"Phát hiện {len(err_df)} dòng lỗi tại phiên #{sid}:")
             st.dataframe(err_df, use_container_width=True)
 
-            # Nút tải file báo cáo lỗi CSV
             st.download_button(
                 label="📥 Tải Báo Cáo Lỗi (CSV)",
-                data=err_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"bao_cao_loi_phien_{sid}.csv",
-                mime="text/csv",
-            )
-        else:
-            st.success("Phiên này hoàn toàn sạch, không có lỗi!")
-    conn.close()
+                data=err_df.to_csv
