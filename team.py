@@ -170,7 +170,7 @@ def get_file_content_hash(file_bytes):
     return hasher.hexdigest()
 
 
-# Hàm khôi phục DataFrame từ cơ sở dữ liệu nếu mất file tạm trên đĩa
+# Hàm khôi phục DataFrame trực tiếp từ các bảng lưu trữ dữ liệu trong SQLite
 def reconstruct_df_from_db(session_id):
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     valid_df = pd.read_sql_query(
@@ -548,16 +548,11 @@ if current_view == "📥 Tải File & Cấu Hình":
         if "df_cache" not in st.session_state:
             st.session_state["df_cache"] = {}
 
-        st.markdown("### ⚙️ Cấu Hình Nhanh Quy Tắc Lỗi Cho Các Tệp")
-        select_all_files = st.checkbox(
-            "🔥 Chọn tất cả các tệp / Áp dụng đồng loạt", value=True, key="chk_select_all"
-        )
+        st.markdown("### ⚙️ Danh Sách Tệp Tải Lên & Chọn Tệp Xử Lý")
 
-        selected_files_to_process = []
+        file_info_list = []
         file_dfs = {}
         file_hashes = {}
-
-        st.markdown('<div class="scrollable-file-box">', unsafe_allow_html=True)
 
         conn_check = sqlite3.connect(DB_NAME, check_same_thread=False)
 
@@ -582,75 +577,83 @@ if current_view == "📥 Tải File & Cấu Hình":
             if df is not None:
                 file_dfs[uploaded_file.name] = (df, uploaded_file)
                 
-                if is_already_scanned:
-                    st.warning(
-                        f"⚠️ **Nhận diện nội dung trùng lặp:** Tệp `{uploaded_file.name}` có nội dung hoàn toàn trùng khớp với tệp **`{scanned_filename}`** đã được quét trước đó (Mã phiên cũ: **#{scanned_session_id}**)."
-                    )
-
-                is_checked = st.checkbox(
-                    f"Tích chọn tệp: `{uploaded_file.name}` (Tổng dòng: {len(df):,}) {' [ĐÃ TỪNG QUÉT]' if is_already_scanned else ''}",
-                    value=not is_already_scanned and select_all_files,
-                    key=f"chk_file_{idx}_{uploaded_file.name}",
-                )
-                if is_checked:
-                    selected_files_to_process.append(uploaded_file.name)
-
-                with st.expander(
-                    f"🔍 Xem trước dữ liệu tệp: {uploaded_file.name}",
-                    expanded=False,
-                ):
-                    st.dataframe(df.head(), use_container_width=True)
+                status_text = f"Đã từng quét (Phiên #{scanned_session_id})" if is_already_scanned else "Mới / Chưa quét"
+                file_info_list.append({
+                    "idx_ref": idx,
+                    "Tên tệp": uploaded_file.name,
+                    "Tổng số dòng": f"{len(df):,}",
+                    "Trạng thái": status_text
+                })
 
         conn_check.close()
-        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("---")
-        if st.button(
-            "🚀 Bắt Đầu Xử Lý Tất Cả Các Tệp Đã Chọn", type="primary", key="main_process_btn"
-        ):
-            if not selected_files_to_process:
-                st.error("⚠️ Vui lòng tích chọn ít nhất một tệp để xử lý!")
-            else:
-                conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-                cursor = conn.cursor()
+        if file_info_list:
+            files_df = pd.DataFrame(file_info_list)
+            
+            upload_event = st.dataframe(
+                files_df.drop(columns=["idx_ref"]),
+                use_container_width=True,
+                selection_mode="multi-row",
+                on_select="rerun",
+                key="upload_files_table_selection"
+            )
 
-                last_created_id = None
-                for fname in selected_files_to_process:
-                    df, up_file = file_dfs[fname]
-                    all_cols = df.columns.tolist()
-                    f_hash = file_hashes[fname]
+            selected_files_to_process = []
+            if upload_event and "selection" in upload_event and "rows" in upload_event.selection:
+                selected_rows = upload_event.selection["rows"]
+                for r_idx in selected_rows:
+                    selected_files_to_process.append(files_df.iloc[r_idx]["Tên tệp"])
 
-                    cursor.execute(
-                        "INSERT INTO import_sessions (filename, file_hash, total_rows, status) VALUES (?, ?, ?, 'ĐANG CHẠY')",
-                        (fname, f_hash, len(df)),
+            if selected_files_to_process:
+                st.info(f"📦 Bạn đã chọn **{len(selected_files_to_process)}** tệp để xử lý.")
+
+            st.markdown("---")
+            if st.button(
+                "🚀 Bắt Đầu Xử Lý Tất Cả Các Tệp Đã Chọn", type="primary", key="main_process_btn"
+            ):
+                if not selected_files_to_process:
+                    st.error("⚠️ Vui lòng tích chọn ít nhất một tệp ở bảng trên để xử lý!")
+                else:
+                    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+                    cursor = conn.cursor()
+
+                    last_created_id = None
+                    for fname in selected_files_to_process:
+                        df, up_file = file_dfs[fname]
+                        all_cols = df.columns.tolist()
+                        f_hash = file_hashes[fname]
+
+                        cursor.execute(
+                            "INSERT INTO import_sessions (filename, file_hash, total_rows, status) VALUES (?, ?, ?, 'ĐANG CHẠY')",
+                            (fname, f_hash, len(df)),
+                        )
+                        session_id = cursor.lastrowid
+                        conn.commit()
+
+                        file_save_path = os.path.join(UPLOAD_DIR, f"session_{session_id}_{fname}")
+                        up_file.seek(0)
+                        with open(file_save_path, "wb") as f:
+                            f.write(up_file.read())
+
+                        st.session_state["df_cache"][session_id] = (df, all_cols, file_save_path)
+
+                        thread = threading.Thread(
+                            target=process_data_background,
+                            args=(session_id, df, all_cols, 0),
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        last_created_id = session_id
+
+                    conn.close()
+
+                    if last_created_id:
+                        st.session_state["latest_session_id"] = last_created_id
+
+                    st.session_state["selected_nav"] = (
+                        "📜 Lịch Sử & Xuất File Báo Cáo"
                     )
-                    session_id = cursor.lastrowid
-                    conn.commit()
-
-                    file_save_path = os.path.join(UPLOAD_DIR, f"session_{session_id}_{fname}")
-                    up_file.seek(0)
-                    with open(file_save_path, "wb") as f:
-                        f.write(up_file.read())
-
-                    st.session_state["df_cache"][session_id] = (df, all_cols, file_save_path)
-
-                    thread = threading.Thread(
-                        target=process_data_background,
-                        args=(session_id, df, all_cols, 0),
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    last_created_id = session_id
-
-                conn.close()
-
-                if last_created_id:
-                    st.session_state["latest_session_id"] = last_created_id
-
-                st.session_state["selected_nav"] = (
-                    "📜 Lịch Sử & Xuất File Báo Cáo"
-                )
-                st.rerun()
+                    st.rerun()
 
 # --- VIEW 2: QUẢN LÝ PHIÊN & RESUME ---
 elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
@@ -862,7 +865,6 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             "Thời gian tạo",
         ]
         
-        # Bảng hiển thị có checkbox tròn chọn nhiều dòng (multi-row) giống ảnh yêu cầu
         event = st.dataframe(
             view_history.drop(columns=["raw_id"]),
             use_container_width=True,
@@ -871,11 +873,9 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             key="history_multi_select_table"
         )
 
-        # Khởi tạo state lưu phiên đang được chọn nếu chưa có
         if "selected_target_session_id" not in st.session_state:
             st.session_state["selected_target_session_id"] = history_df["id"].iloc[0] if not history_df.empty else 1
 
-        # Lấy dòng vừa click chọn trên bảng để đồng bộ dữ liệu bên dưới
         if event and "selection" in event and "rows" in event.selection:
             selected_rows = event.selection["rows"]
             if selected_rows:
@@ -930,9 +930,11 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
                 target_filename = history_df[history_df['id'] == target_session_id]['filename'].values[0]
                 export_df_source = None
                 
+                # 1. Tìm trong bộ nhớ RAM tạm
                 if "df_cache" in st.session_state and target_session_id in st.session_state["df_cache"]:
                     export_df_source = st.session_state["df_cache"][target_session_id][0]
                 else:
+                    # 2. Tìm file lưu trên ổ cứng đĩa tạm
                     possible_path = os.path.join(UPLOAD_DIR, f"session_{target_session_id}_{target_filename}")
                     if os.path.exists(possible_path):
                         try:
@@ -945,6 +947,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
                         except:
                             pass
                     
+                    # 3. Tự động khôi phục dữ liệu từ Database SQLite nếu file tạm không còn tồn tại trên ổ cứng
                     if export_df_source is None:
                         export_df_source = reconstruct_df_from_db(target_session_id)
 
