@@ -113,7 +113,7 @@ st.markdown(
 DB_NAME = "dataclean_app_integrated.db"
 
 
-# 2. Khởi tạo Cơ sở dữ liệu SQLite
+# 2. Khởi tạo Cơ sở dữ liệu SQLite & Tự động cập nhật cột file_hash nếu chưa có
 def init_db():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -131,6 +131,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Kiểm tra và tự động thêm cột file_hash nếu database cũ chưa có
+    cursor.execute("PRAGMA table_info(import_sessions)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "file_hash" not in columns:
+        cursor.execute("ALTER TABLE import_sessions ADD COLUMN file_hash TEXT")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS valid_data (
@@ -625,7 +631,6 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
         )
         display_df["id"] = display_df["id"].apply(lambda x: f"#{x}")
         
-        # Đảm bảo giữ đúng 9 cột tương ứng với dữ liệu lấy từ DB
         display_df = display_df[[
             "id",
             "filename",
@@ -787,10 +792,11 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             else "0.00%",
             axis=1,
         )
+        view_history["raw_id"] = view_history["id"]
         view_history["id"] = view_history["id"].apply(lambda x: f"#{x}")
         
-        # Đảm bảo giữ đúng 9 cột tương ứng
         view_history = view_history[[
+            "raw_id",
             "id",
             "filename",
             "total_rows",
@@ -802,6 +808,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             "created_at"
         ]]
         view_history.columns = [
+            "raw_id",
             "Mã phiên",
             "Tên tệp dữ liệu",
             "Tổng số dòng",
@@ -812,9 +819,27 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             "Trạng thái",
             "Thời gian tạo",
         ]
-        st.dataframe(view_history, use_container_width=True)
+        
+        event = st.dataframe(
+            view_history.drop(columns=["raw_id"]),
+            use_container_width=True,
+            selection_mode="single-row",
+            on_select="rerun",
+            key="history_table_selection"
+        )
+
+        selected_session_id_from_table = None
+        if event and "selection" in event and "rows" in event.selection:
+            selected_rows = event.selection["rows"]
+            if selected_rows:
+                row_idx = selected_rows[0]
+                selected_session_id_from_table = int(view_history.iloc[row_idx]["raw_id"])
 
         available_ids = filtered_history_df["id"].tolist() if not filtered_history_df.empty else history_df["id"].tolist()
+        
+        default_target_id = available_ids[0] if available_ids else 1
+        if selected_session_id_from_table and selected_session_id_from_table in history_df["id"].tolist():
+            default_target_id = selected_session_id_from_table
 
         st.markdown("---")
         st.subheader("📥 Xuất Báo Cáo Định Dạng Excel Chuyên Nghiệp")
@@ -839,13 +864,13 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
         with col_ex2:
             st.markdown("#### 2. File gốc đánh dấu ô lỗi")
             st.write(
-                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi dựa trên kết quả tìm kiếm."
+                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi dựa trên dòng bạn vừa chọn ở bảng trên."
             )
             
             target_session_id = st.selectbox(
                 "Chọn Mã Phiên muốn xuất file đánh dấu lỗi:",
                 available_ids,
-                index=0 if available_ids else 0,
+                index=available_ids.index(default_target_id) if default_target_id in available_ids else 0,
                 key="select_session_for_marking_tab3",
                 format_func=lambda x: f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
             )
@@ -891,7 +916,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
     st.markdown("---")
     st.subheader("🔍 Tra Cứu Dòng Lỗi Chi Tiết")
     
-    lookup_default_id = available_ids[0] if 'available_ids' in locals() and available_ids else 1
+    lookup_default_id = default_target_id if 'default_target_id' in locals() else (available_ids[0] if 'available_ids' in locals() and available_ids else 1)
 
     view_id = st.selectbox(
         "Chọn Mã Phiên muốn xem chi tiết dòng lỗi:",
