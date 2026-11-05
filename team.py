@@ -1,5 +1,7 @@
+import hashlib
 import io
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -18,7 +20,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS giao diện Dark Mode
+UPLOAD_DIR = "uploaded_temp"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Custom CSS giao diện Dark Mode + Khung cuộn tùy chỉnh cho danh sách tệp
 st.markdown(
     """
     <style>
@@ -48,6 +53,28 @@ st.markdown(
     
     [data-testid="stTabs"] {
         display: none !important;
+    }
+
+    .scrollable-file-box {
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 15px;
+        margin-bottom: 1.5rem;
+        border: 1px solid #2d2d2d;
+        border-radius: 12px;
+        padding: 15px;
+        background-color: #161616;
+    }
+    .scrollable-file-box::-webkit-scrollbar {
+        width: 8px;
+    }
+    .scrollable-file-box::-webkit-scrollbar-track {
+        background: #1a1a1a;
+        border-radius: 4px;
+    }
+    .scrollable-file-box::-webkit-scrollbar-thumb {
+        background: #3b82f6;
+        border-radius: 4px;
     }
 
     div[data-testid="stMetric"] {
@@ -86,7 +113,7 @@ st.markdown(
 DB_NAME = "dataclean_app_integrated.db"
 
 
-# 2. Khởi tạo Cơ sở dữ liệu SQLite
+# 2. Khởi tạo Cơ sở dữ liệu SQLite (Có thêm cột file_hash để nhận diện nội dung file)
 def init_db():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -95,6 +122,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS import_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT,
+            file_hash TEXT,
             total_rows INTEGER,
             processed_rows INTEGER DEFAULT 0,
             valid_rows INTEGER DEFAULT 0,
@@ -128,6 +156,13 @@ def init_db():
 
 
 init_db()
+
+
+# Hàm tính mã băm (MD5 Hash) từ nội dung bytes của file để nhận diện chính xác nội dung
+def get_file_content_hash(file_bytes):
+    hasher = hashlib.md5()
+    hasher.update(file_bytes)
+    return hasher.hexdigest()
 
 
 # 3. Các hàm xuất Excel chuyên nghiệp
@@ -438,13 +473,13 @@ with st.sidebar:
     st.markdown("---")
     with st.expander("📖 **Giới Thiệu & Hướng Dẫn**", expanded=False):
         st.write(
-            "Phần mềm hỗ trợ kiểm tra dữ liệu lớn, chọn nhanh tất cả file hoặc chọn từng file, "
-            "tự động quét lỗi khuyết thiếu và chuyển đổi trang thái mượt mà."
+            "Phần mềm tự động nhận diện nội dung tệp (File Content Hash). "
+            "Nếu tệp đã từng được quét trước đó, hệ thống sẽ tự động thông báo và bỏ qua quét lại để tiết kiệm thời gian."
         )
 
 st.title("⚡ DataClean Pro - Hệ Thống Kiểm Tra & Chuẩn Hóa Dữ Liệu")
 st.caption(
-    "Giải pháp xử lý tệp lớn thông minh, chạy ngầm độc lập, tự động phát hiện lỗi và xuất báo cáo Excel."
+    "Giải pháp xử lý tệp lớn thông minh, nhận diện nội dung trùng lặp, chạy ngầm độc lập và xuất báo cáo Excel."
 )
 st.markdown("---")
 
@@ -476,14 +511,40 @@ if current_view == "📥 Tải File & Cấu Hình":
 
         selected_files_to_process = []
         file_dfs = {}
+        file_hashes = {}
+
+        st.markdown('<div class="scrollable-file-box">', unsafe_allow_html=True)
+
+        conn_check = sqlite3.connect(DB_NAME, check_same_thread=False)
 
         for idx, uploaded_file in enumerate(uploaded_files):
+            file_bytes = uploaded_file.getvalue()
+            f_hash = get_file_content_hash(file_bytes)
+            file_hashes[uploaded_file.name] = f_hash
+
+            # Kiểm tra trong cơ sở dữ liệu xem nội dung file này đã từng được quét chưa
+            existing_session = pd.read_sql_query(
+                f"SELECT id, filename, created_status FROM (SELECT id, filename, status as created_status FROM import_sessions WHERE file_hash = '{f_hash}')",
+                conn_check,
+            )
+
+            is_already_scanned = not existing_session.empty
+            scanned_session_id = existing_session.iloc[0]["id"] if is_already_scanned else None
+            scanned_filename = existing_session.iloc[0]["filename"] if is_already_scanned else ""
+
             df = load_uploaded_file(uploaded_file)
             if df is not None:
                 file_dfs[uploaded_file.name] = (df, uploaded_file)
+                
+                # Hiển thị thông báo trực quan nếu nội dung file đã tồn tại trong lịch sử
+                if is_already_scanned:
+                    st.warning(
+                        f"⚠️ **Nhận diện nội dung trùng lặp:** Tệp `{uploaded_file.name}` có nội dung hoàn toàn trùng khớp với tệp **`{scanned_filename}`** đã được quét trước đó (Mã phiên cũ: **#{scanned_session_id}**). Bạn có thể bỏ qua hoặc quét lại."
+                    )
+
                 is_checked = st.checkbox(
-                    f"Tích chọn tệp: `{uploaded_file.name}` (Tổng dòng: {len(df):,})",
-                    value=select_all_files,
+                    f"Tích chọn tệp: `{uploaded_file.name}` (Tổng dòng: {len(df):,}) {' [ĐÃ TỪNG QUÉT]' if is_already_scanned else ''}",
+                    value=not is_already_scanned and select_all_files, # Mặc định bỏ chọn nếu file đã quét rồi để tránh quét lại vô ích
                     key=f"chk_file_{idx}_{uploaded_file.name}",
                 )
                 if is_checked:
@@ -495,8 +556,10 @@ if current_view == "📥 Tải File & Cấu Hình":
                 ):
                     st.dataframe(df.head(), use_container_width=True)
 
+        conn_check.close()
+        st.markdown('</div>', unsafe_allow_html=True)
+
         st.markdown("---")
-        # Nút bấm chính thực thi hành động xử lý
         if st.button(
             "🚀 Bắt Đầu Xử Lý Tất Cả Các Tệp Đã Chọn", type="primary", key="main_process_btn"
         ):
@@ -510,15 +573,21 @@ if current_view == "📥 Tải File & Cấu Hình":
                 for fname in selected_files_to_process:
                     df, up_file = file_dfs[fname]
                     all_cols = df.columns.tolist()
+                    f_hash = file_hashes[fname]
 
                     cursor.execute(
-                        "INSERT INTO import_sessions (filename, total_rows, status) VALUES (?, ?, 'ĐANG CHẠY')",
-                        (fname, len(df)),
+                        "INSERT INTO import_sessions (filename, file_hash, total_rows, status) VALUES (?, ?, ?, 'ĐANG CHẠY')",
+                        (fname, f_hash, len(df)),
                     )
                     session_id = cursor.lastrowid
                     conn.commit()
 
-                    st.session_state["df_cache"][session_id] = (df, all_cols)
+                    file_save_path = os.path.join(UPLOAD_DIR, f"session_{session_id}_{fname}")
+                    up_file.seek(0)
+                    with open(file_save_path, "wb") as f:
+                        f.write(up_file.read())
+
+                    st.session_state["df_cache"][session_id] = (df, all_cols, file_save_path)
 
                     thread = threading.Thread(
                         target=process_data_background,
@@ -534,7 +603,7 @@ if current_view == "📥 Tải File & Cấu Hình":
                     st.session_state["latest_session_id"] = last_created_id
 
                 st.session_state["selected_nav"] = (
-                    "🔄 Quản Lý Phiên & Tiếp Tục (Resume)"
+                    "📜 Lịch Sử & Xuất File Báo Cáo"
                 )
                 st.rerun()
 
@@ -561,6 +630,7 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
         display_df.columns = [
             "Mã phiên",
             "Tên tệp dữ liệu",
+            "Mã băm nội dung",
             "Tổng số dòng",
             "Số dòng đã xử lý",
             "Số dòng hợp lệ",
@@ -610,6 +680,7 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
             status = info["status"]
             valid = info["valid_rows"]
             invalid = info["invalid_rows"]
+            filename_val = info["filename"]
             pct = (processed / total) if total > 0 else 0
             error_rate_val = (invalid / total * 100) if total > 0 else 0
 
@@ -642,13 +713,28 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
                     if st.button(
                         "▶️ Tiếp Tục Xử Lý (Resume từ điểm dừng)", type="primary", key="btn_resume_process"
                     ):
-                        if (
-                            "df_cache" in st.session_state
-                            and selected_id in st.session_state["df_cache"]
-                        ):
-                            df_cached, req_cached = st.session_state["df_cache"][
-                                selected_id
-                            ]
+                        df_cached = None
+                        req_cached = None
+                        
+                        if "df_cache" in st.session_state and selected_id in st.session_state["df_cache"]:
+                            cached_data = st.session_state["df_cache"][selected_id]
+                            df_cached = cached_data[0]
+                            req_cached = cached_data[1]
+                        else:
+                            possible_path = os.path.join(UPLOAD_DIR, f"session_{selected_id}_{filename_val}")
+                            if os.path.exists(possible_path):
+                                try:
+                                    if filename_val.endswith(".csv"):
+                                        df_cached = pd.read_csv(possible_path, encoding="utf-8-sig")
+                                    elif filename_val.endswith((".xlsx", ".xls")):
+                                        df_cached = pd.read_excel(possible_path)
+                                    elif filename_val.endswith(".json"):
+                                        df_cached = pd.read_json(possible_path)
+                                    req_cached = df_cached.columns.tolist()
+                                except Exception as e:
+                                    st.error(f"Không thể đọc lại tệp từ đĩa: {e}")
+
+                        if df_cached is not None:
                             t_resume = threading.Thread(
                                 target=process_data_background,
                                 args=(
@@ -666,7 +752,7 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
                             st.rerun()
                         else:
                             st.error(
-                                "⚠️ Vui lòng tải lại tệp ở Tab 1 để bộ nhớ tạm ghi nhận dữ liệu phục hồi."
+                                "⚠️ Không tìm thấy tệp lưu trữ trên hệ thống để khôi phục."
                             )
     else:
         st.info("Chưa có phiên nhập dữ liệu nào trong hệ thống.")
@@ -674,13 +760,29 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
 # --- VIEW 3: LỊCH SỬ & XUẤT EXCEL BÁO CÁO ---
 elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
     st.subheader("📜 Bảng Lịch Sử & Xuất Báo Cáo Xử Lý")
+    
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     history_df = pd.read_sql_query(
         "SELECT * FROM import_sessions ORDER BY id DESC", conn
     )
 
     if not history_df.empty:
-        view_history = history_df.copy()
+        search_query = st.text_input(
+            "🔍 Tìm kiếm nhanh tên tệp dữ liệu hoặc mã phiên:",
+            value="",
+            placeholder="Nhập tên file hoặc mã phiên (ví dụ: 7A1, data_test)...",
+            key="global_search_input"
+        )
+
+        filtered_history_df = history_df.copy()
+        if search_query.strip():
+            q = search_query.strip().lower()
+            filtered_history_df = filtered_history_df[
+                filtered_history_df["filename"].str.lower().str.contains(q, na=False) |
+                filtered_history_df["id"].astype(str).str.contains(q, na=False)
+            ]
+
+        view_history = filtered_history_df.copy()
         view_history["Tỉ lệ sai"] = view_history.apply(
             lambda r: f"{(r['invalid_rows'] / r['total_rows']) * 100:.2f}%"
             if r["total_rows"] > 0
@@ -691,6 +793,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
         view_history.columns = [
             "Mã phiên",
             "Tên tệp dữ liệu",
+            "Mã băm nội dung",
             "Tổng số dòng",
             "Số dòng đã xử lý",
             "Số dòng hợp lệ",
@@ -711,6 +814,8 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             "Thời gian tạo",
         ]]
         st.dataframe(view_history, use_container_width=True)
+
+        available_ids = filtered_history_df["id"].tolist() if not filtered_history_df.empty else history_df["id"].tolist()
 
         st.markdown("---")
         st.subheader("📥 Xuất Báo Cáo Định Dạng Excel Chuyên Nghiệp")
@@ -735,45 +840,66 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
         with col_ex2:
             st.markdown("#### 2. File gốc đánh dấu ô lỗi")
             st.write(
-                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi."
+                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi dựa trên kết quả tìm kiếm."
             )
+            
             target_session_id = st.selectbox(
                 "Chọn Mã Phiên muốn xuất file đánh dấu lỗi:",
-                history_df["id"].tolist(),
+                available_ids,
+                index=0 if available_ids else 0,
                 key="select_session_for_marking_tab3",
+                format_func=lambda x: f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
             )
 
             if target_session_id:
-                if (
-                    "current_raw_df" in st.session_state
-                    and st.session_state["current_raw_df"] is not None
-                ):
+                target_filename = history_df[history_df['id'] == target_session_id]['filename'].values[0]
+                export_df_source = None
+                
+                if "df_cache" in st.session_state and target_session_id in st.session_state["df_cache"]:
+                    export_df_source = st.session_state["df_cache"][target_session_id][0]
+                else:
+                    possible_path = os.path.join(UPLOAD_DIR, f"session_{target_session_id}_{target_filename}")
+                    if os.path.exists(possible_path):
+                        try:
+                            if target_filename.endswith(".csv"):
+                                export_df_source = pd.read_csv(possible_path, encoding="utf-8-sig")
+                            elif target_filename.endswith((".xlsx", ".xls")):
+                                export_df_source = pd.read_excel(possible_path)
+                            elif target_filename.endswith(".json"):
+                                export_df_source = pd.read_json(possible_path)
+                        except:
+                            pass
+
+                if export_df_source is not None:
                     marked_buffer = export_marked_file_to_excel(
-                        target_session_id, st.session_state["current_raw_df"]
+                        target_session_id, export_df_source
                     )
                     st.download_button(
                         label=f"📝 Tải File Gốc Đánh Dấu Lỗi (Phiên #{target_session_id})",
                         data=marked_buffer,
-                        file_name=f"DataClean_File_Goc_Dau_Loi_Phien_{target_session_id}.xlsx",
+                        file_name=f"DataClean_File_Goc_Dau_Loi_Phiên_{target_session_id}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
                         key="dl_btn_marked_excel"
                     )
                 else:
                     st.info(
-                        "💡 Vui lòng tải file tại Tab 1 để lưu cache xuất file đánh dấu lỗi."
+                        "💡 Không tìm thấy dữ liệu gốc để xuất file đánh dấu lỗi."
                     )
     else:
-        st.info("Chưa có dữ liệu lịch sử phiên nhập nào.")
+        st.info("Chưa có phiên nhập dữ liệu nào trong hệ thống.")
 
     st.markdown("---")
     st.subheader("🔍 Tra Cứu Dòng Lỗi Chi Tiết")
-    view_id = st.number_input(
-        "Nhập ID Phiên muốn xem chi tiết dòng lỗi:",
-        min_value=1,
-        step=1,
-        value=1,
-        key="num_input_lookup_error_id"
+    
+    lookup_default_id = available_ids[0] if 'available_ids' in locals() and available_ids else 1
+
+    view_id = st.selectbox(
+        "Chọn Mã Phiên muốn xem chi tiết dòng lỗi:",
+        history_df["id"].tolist() if not history_df.empty else [1],
+        index=history_df["id"].tolist().index(lookup_default_id) if not history_df.empty and lookup_default_id in history_df["id"].tolist() else 0,
+        key="selectbox_lookup_error_id",
+        format_func=lambda x: f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
     )
 
     if st.button("🔍 Trích Xuất Dữ Liệu Lỗi", key="btn_lookup_error_details"):
@@ -792,7 +918,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             st.download_button(
                 label="📥 Tải Báo Cáo Lỗi Chi Tiết (CSV)",
                 data=csv_bytes,
-                file_name=f"DataClean_Bao_Cao_Loi_Phien_{view_id}.csv",
+                file_name=f"DataClean_Bao_Cao_Loi_Phiên_{view_id}.csv",
                 mime="text/csv",
                 key="dl_btn_error_csv"
             )
