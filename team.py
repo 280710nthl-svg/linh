@@ -113,7 +113,7 @@ st.markdown(
 DB_NAME = "dataclean_app_integrated.db"
 
 
-# 2. Khởi tạo Cơ sở dữ liệu SQLite (Có thêm cột file_hash để nhận diện nội dung file)
+# 2. Khởi tạo Cơ sở dữ liệu SQLite
 def init_db():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -158,7 +158,6 @@ def init_db():
 init_db()
 
 
-# Hàm tính mã băm (MD5 Hash) từ nội dung bytes của file để nhận diện chính xác nội dung
 def get_file_content_hash(file_bytes):
     hasher = hashlib.md5()
     hasher.update(file_bytes)
@@ -522,9 +521,8 @@ if current_view == "📥 Tải File & Cấu Hình":
             f_hash = get_file_content_hash(file_bytes)
             file_hashes[uploaded_file.name] = f_hash
 
-            # Kiểm tra trong cơ sở dữ liệu xem nội dung file này đã từng được quét chưa
             existing_session = pd.read_sql_query(
-                f"SELECT id, filename, created_status FROM (SELECT id, filename, status as created_status FROM import_sessions WHERE file_hash = '{f_hash}')",
+                f"SELECT id, filename, status as created_status FROM import_sessions WHERE file_hash = '{f_hash}'",
                 conn_check,
             )
 
@@ -536,15 +534,14 @@ if current_view == "📥 Tải File & Cấu Hình":
             if df is not None:
                 file_dfs[uploaded_file.name] = (df, uploaded_file)
                 
-                # Hiển thị thông báo trực quan nếu nội dung file đã tồn tại trong lịch sử
                 if is_already_scanned:
                     st.warning(
-                        f"⚠️ **Nhận diện nội dung trùng lặp:** Tệp `{uploaded_file.name}` có nội dung hoàn toàn trùng khớp với tệp **`{scanned_filename}`** đã được quét trước đó (Mã phiên cũ: **#{scanned_session_id}**). Bạn có thể bỏ qua hoặc quét lại."
+                        f"⚠️ **Nhận diện nội dung trùng lặp:** Tệp `{uploaded_file.name}` có nội dung hoàn toàn trùng khớp với tệp **`{scanned_filename}`** đã được quét trước đó (Mã phiên cũ: **#{scanned_session_id}**)."
                     )
 
                 is_checked = st.checkbox(
                     f"Tích chọn tệp: `{uploaded_file.name}` (Tổng dòng: {len(df):,}) {' [ĐÃ TỪNG QUÉT]' if is_already_scanned else ''}",
-                    value=not is_already_scanned and select_all_files, # Mặc định bỏ chọn nếu file đã quét rồi để tránh quét lại vô ích
+                    value=not is_already_scanned and select_all_files,
                     key=f"chk_file_{idx}_{uploaded_file.name}",
                 )
                 if is_checked:
@@ -627,29 +624,30 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
             axis=1,
         )
         display_df["id"] = display_df["id"].apply(lambda x: f"#{x}")
+        
+        # Đảm bảo giữ đúng 9 cột tương ứng với dữ liệu lấy từ DB
+        display_df = display_df[[
+            "id",
+            "filename",
+            "total_rows",
+            "processed_rows",
+            "valid_rows",
+            "invalid_rows",
+            "Tỉ lệ sai",
+            "status",
+            "created_at"
+        ]]
         display_df.columns = [
             "Mã phiên",
             "Tên tệp dữ liệu",
-            "Mã băm nội dung",
             "Tổng số dòng",
             "Số dòng đã xử lý",
             "Số dòng hợp lệ",
             "Số dòng bị lỗi",
+            "Tỉ lệ sai",
             "Trạng thái",
             "Thời gian tạo",
-            "Tỉ lệ sai",
         ]
-        display_df = display_df[[
-            "Mã phiên",
-            "Tên tệp dữ liệu",
-            "Tổng số dòng",
-            "Số dòng đã xử lý",
-            "Số dòng hợp lệ",
-            "Số dòng bị lỗi",
-            "Tỉ lệ sai",
-            "Trạng thái",
-            "Thời gian tạo",
-        ]]
         st.dataframe(display_df, use_container_width=True)
 
         default_index = 0
@@ -790,29 +788,30 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             axis=1,
         )
         view_history["id"] = view_history["id"].apply(lambda x: f"#{x}")
+        
+        # Đảm bảo giữ đúng 9 cột tương ứng
+        view_history = view_history[[
+            "id",
+            "filename",
+            "total_rows",
+            "processed_rows",
+            "valid_rows",
+            "invalid_rows",
+            "Tỉ lệ sai",
+            "status",
+            "created_at"
+        ]]
         view_history.columns = [
             "Mã phiên",
             "Tên tệp dữ liệu",
-            "Mã băm nội dung",
             "Tổng số dòng",
             "Số dòng đã xử lý",
             "Số dòng hợp lệ",
             "Số dòng bị lỗi",
+            "Tỉ lệ sai",
             "Trạng thái",
             "Thời gian tạo",
-            "Tỉ lệ sai",
         ]
-        view_history = view_history[[
-            "Mã phiên",
-            "Tên tệp dữ liệu",
-            "Tổng số dòng",
-            "Số dòng đã xử lý",
-            "Số dòng hợp lệ",
-            "Số dòng bị lỗi",
-            "Tỉ lệ sai",
-            "Trạng thái",
-            "Thời gian tạo",
-        ]]
         st.dataframe(view_history, use_container_width=True)
 
         available_ids = filtered_history_df["id"].tolist() if not filtered_history_df.empty else history_df["id"].tolist()
