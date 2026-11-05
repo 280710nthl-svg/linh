@@ -478,15 +478,13 @@ def process_data_background(session_id, df, required_cols, start_row=0):
                 batch_valid.clear()
                 batch_invalid.clear()
 
-            time.sleep(0.0005)
-
         cursor.execute(
-            "UPDATE import_sessions SET status = 'HOÀN THÀNH' WHERE id = ?",
+            "UPDATE import_sessions SET status = 'HOÀN THÀNH', processed_rows = total_rows WHERE id = ?",
             (session_id,),
         )
         conn.commit()
     except Exception as e:
-        print(f"Lỗi tiến trình: {e}")
+        print(f"Lỗi tiến trình nền: {e}")
     finally:
         conn.close()
 
@@ -595,6 +593,8 @@ if current_view == "📥 Tải File & Cấu Hình":
         if file_info_list:
             files_df = pd.DataFrame(file_info_list)
             
+            default_selection = list(range(len(files_df)))
+            
             upload_event = st.dataframe(
                 files_df.drop(columns=["idx_ref"]),
                 use_container_width=True,
@@ -604,13 +604,20 @@ if current_view == "📥 Tải File & Cấu Hình":
             )
 
             selected_files_to_process = []
+            selected_rows = []
+            
             if upload_event and "selection" in upload_event and "rows" in upload_event.selection:
                 selected_rows = upload_event.selection["rows"]
-                for r_idx in selected_rows:
+            
+            if not selected_rows and not (upload_event and "selection" in upload_event):
+                selected_rows = default_selection
+
+            for r_idx in selected_rows:
+                if r_idx < len(files_df):
                     selected_files_to_process.append(files_df.iloc[r_idx]["Tên tệp"])
 
             if selected_files_to_process:
-                st.info(f"📦 Bạn đã chọn **{len(selected_files_to_process)}** tệp để xử lý.")
+                st.info(f"📦 Bạn đang chọn **{len(selected_files_to_process)}** tệp để xử lý.")
 
             st.markdown("---")
             if st.button(
@@ -757,18 +764,29 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
             m5.metric(label="📉 Tỉ lệ sai", value=f"{error_rate_val:.2f}%")
 
             st.markdown("<br>", unsafe_allow_html=True)
-            col_btn1, col_btn2 = st.columns(2)
+            col_btn1, col_btn2, col_btn3 = st.columns(3)
             with col_btn1:
                 if st.button("🔄 Cập Nhật Trạng Thái", key="btn_refresh_status"):
                     st.rerun()
             with col_btn2:
+                # Nút cứu hộ cưỡng chế hoàn thành phiên nếu bị kẹt trạng thái ĐANG CHẠY
+                if status != "HOÀN THÀNH":
+                    if st.button("⚡ Đánh Dấu Hoàn Thành Ngay", key="btn_force_complete"):
+                        conn_f = sqlite3.connect(DB_NAME, check_same_thread=False)
+                        cursor_f = conn_f.cursor()
+                        cursor_f.execute("UPDATE import_sessions SET status = 'HOÀN THÀNH' WHERE id = ?", (selected_id,))
+                        conn_f.commit()
+                        conn_f.close()
+                        st.success(f"Đã cập nhật Phiên #{selected_id} thành HOÀN THÀNH thành công!")
+                        st.rerun()
+            with col_btn3:
                 if status != "HOÀN THÀNH" and processed < total:
                     possible_path = os.path.join(UPLOAD_DIR, f"session_{selected_id}_{filename_val}")
                     file_exists_on_disk = os.path.exists(possible_path) or ("df_cache" in st.session_state and selected_id in st.session_state["df_cache"])
 
                     if file_exists_on_disk:
                         if st.button(
-                            "▶️ Tiếp Tục Xử Lý (Resume từ điểm dừng)", type="primary", key="btn_resume_process"
+                            "▶️ Tiếp Tục Xử Lý", type="primary", key="btn_resume_process"
                         ):
                             df_cached = None
                             req_cached = None
@@ -806,8 +824,6 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
                                     f"Đã khôi phục thành công Phiên #{selected_id} từ dòng số {processed + 1}!"
                                 )
                                 st.rerun()
-                    else:
-                        st.info("💡 Phiên này đã hoàn tất hoặc không còn tệp tạm trên ổ cứng để chạy Resume.")
     else:
         st.info("Chưa có phiên nhập dữ liệu nào trong hệ thống.")
 
