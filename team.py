@@ -132,7 +132,6 @@ def init_db():
         )
     """)
 
-    # Kiểm tra an toàn xem bảng đã có cột file_hash chưa, nếu chưa thì tự động thêm vào
     cursor.execute("PRAGMA table_info(import_sessions)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_hash" not in columns:
@@ -169,6 +168,45 @@ def get_file_content_hash(file_bytes):
     hasher = hashlib.md5()
     hasher.update(file_bytes)
     return hasher.hexdigest()
+
+
+# Hàm khôi phục DataFrame từ cơ sở dữ liệu nếu mất file tạm trên đĩa
+def reconstruct_df_from_db(session_id):
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    valid_df = pd.read_sql_query(
+        f"SELECT row_number, data_json FROM valid_data WHERE session_id = {session_id}",
+        conn,
+    )
+    invalid_df = pd.read_sql_query(
+        f"SELECT row_number, raw_data FROM invalid_data WHERE session_id = {session_id}",
+        conn,
+    )
+    conn.close()
+
+    rows = []
+    for _, r in valid_df.iterrows():
+        try:
+            data = json.loads(r["data_json"])
+            data["_row_num"] = int(r["row_number"])
+            rows.append(data)
+        except:
+            pass
+
+    for _, r in invalid_df.iterrows():
+        try:
+            data = json.loads(r["raw_data"])
+            data["_row_num"] = int(r["row_number"])
+            rows.append(data)
+        except:
+            pass
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(rows)
+    if "_row_num" in df.columns:
+        df = df.sort_values("_row_num").drop(columns=["_row_num"])
+    return df
 
 
 # 3. Các hàm xuất Excel chuyên nghiệp
@@ -824,26 +862,31 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             "Thời gian tạo",
         ]
         
+        # Bảng hiển thị có checkbox tròn chọn nhiều dòng (multi-row) giống ảnh yêu cầu
         event = st.dataframe(
             view_history.drop(columns=["raw_id"]),
             use_container_width=True,
-            selection_mode="single-row",
+            selection_mode="multi-row",
             on_select="rerun",
-            key="history_table_selection"
+            key="history_multi_select_table"
         )
 
-        selected_session_id_from_table = None
+        # Khởi tạo state lưu phiên đang được chọn nếu chưa có
+        if "selected_target_session_id" not in st.session_state:
+            st.session_state["selected_target_session_id"] = history_df["id"].iloc[0] if not history_df.empty else 1
+
+        # Lấy dòng vừa click chọn trên bảng để đồng bộ dữ liệu bên dưới
         if event and "selection" in event and "rows" in event.selection:
             selected_rows = event.selection["rows"]
             if selected_rows:
                 row_idx = selected_rows[0]
-                selected_session_id_from_table = int(view_history.iloc[row_idx]["raw_id"])
+                clicked_id = int(view_history.iloc[row_idx]["raw_id"])
+                st.session_state["selected_target_session_id"] = clicked_id
 
         available_ids = filtered_history_df["id"].tolist() if not filtered_history_df.empty else history_df["id"].tolist()
         
-        default_target_id = available_ids[0] if available_ids else 1
-        if selected_session_id_from_table and selected_session_id_from_table in history_df["id"].tolist():
-            default_target_id = selected_session_id_from_table
+        if st.session_state["selected_target_session_id"] not in available_ids and available_ids:
+            st.session_state["selected_target_session_id"] = available_ids[0]
 
         st.markdown("---")
         st.subheader("📥 Xuất Báo Cáo Định Dạng Excel Chuyên Nghiệp")
@@ -868,16 +911,20 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
         with col_ex2:
             st.markdown("#### 2. File gốc đánh dấu ô lỗi")
             st.write(
-                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi dựa trên dòng bạn vừa chọn ở bảng trên."
+                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi dựa trên phiên bạn đang chọn."
             )
             
             target_session_id = st.selectbox(
                 "Chọn Mã Phiên muốn xuất file đánh dấu lỗi:",
                 available_ids,
-                index=available_ids.index(default_target_id) if default_target_id in available_ids else 0,
+                index=available_ids.index(st.session_state["selected_target_session_id"]) if st.session_state["selected_target_session_id"] in available_ids else 0,
                 key="select_session_for_marking_tab3",
                 format_func=lambda x: f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
             )
+
+            if target_session_id != st.session_state["selected_target_session_id"]:
+                st.session_state["selected_target_session_id"] = target_session_id
+                st.rerun()
 
             if target_session_id:
                 target_filename = history_df[history_df['id'] == target_session_id]['filename'].values[0]
@@ -897,6 +944,9 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
                                 export_df_source = pd.read_json(possible_path)
                         except:
                             pass
+                    
+                    if export_df_source is None:
+                        export_df_source = reconstruct_df_from_db(target_session_id)
 
                 if export_df_source is not None:
                     marked_buffer = export_marked_file_to_excel(
@@ -920,7 +970,7 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
     st.markdown("---")
     st.subheader("🔍 Tra Cứu Dòng Lỗi Chi Tiết")
     
-    lookup_default_id = default_target_id if 'default_target_id' in locals() else (available_ids[0] if 'available_ids' in locals() and available_ids else 1)
+    lookup_default_id = st.session_state.get("selected_target_session_id", available_ids[0] if 'available_ids' in locals() and available_ids else 1)
 
     view_id = st.selectbox(
         "Chọn Mã Phiên muốn xem chi tiết dòng lỗi:",
