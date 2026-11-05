@@ -18,26 +18,35 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS tích hợp background đồ họa Gradient và style khung bo góc cao cấp
+# Custom CSS tích hợp ảnh nền phong cảnh và khung nội dung bo góc mờ ảo (Glassmorphism)
 st.markdown(
     """
     <style>
-    /* 1. Đổi màu nền toàn bộ trang web thành dạng màu chuyển sắc (Gradient) nhẹ nhàng */
+    /* 1. Đặt ảnh nền phong cảnh cho toàn bộ trang web */
     .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background-image: url("background.jpg");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
     }
 
-    /* 2. Tùy chỉnh khung chứa nội dung cho nổi bật, bo góc và đổ bóng mượt mà */
+    /* 2. Tùy chỉnh khung chứa nội dung dạng trắng mờ để nổi bật trên nền ảnh */
     div.block-container {
-        background-color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.92);
         padding: 2.5rem 3rem;
         border-radius: 15px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
         margin-top: 1rem;
         margin-bottom: 2rem;
     }
 
-    /* 3. Thiết kế thanh Tab cao cấp */
+    /* 3. Màu sắc tiêu đề chính */
+    h1 {
+        color: #1E3C72 !important;
+    }
+
+    /* 4. Thiết kế thanh Tab cao cấp */
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
         background-color: #e9ecef;
@@ -58,16 +67,16 @@ st.markdown(
         box-shadow: 0 4px 10px rgba(30, 60, 114, 0.25);
     }
 
-    /* 4. Thẻ Metric thông số */
+    /* 5. Thẻ Metric thông số */
     div[data-testid="stMetric"] {
-        background-color: #f8f9fa;
+        background-color: #ffffff;
         padding: 16px 20px;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         border-left: 5px solid #1E3C72;
     }
 
-    /* 5. Nút bấm tương tác */
+    /* 6. Nút bấm tương tác */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -432,9 +441,9 @@ with st.sidebar:
 
 
 # 8. Giao diện tiêu đề chính
-st.title("🌟 DA11 - Giao Diện Web Có Background Đồ Họa")
-st.write(
-    "Trang web giờ đây đã có nền Gradient chuyên nghiệp và khung nội dung bo góc đẹp mắt!"
+st.title("⚡ DA11 - Quản Lý Nhập Dữ Liệu & Kiểm Tra Lỗi Thông Minh")
+st.caption(
+    "Ứng dụng xử lý tệp lớn mượt mà, hỗ trợ chạy ngầm độc lập, khôi phục khi gián đoạn và xuất báo cáo Excel chuyên nghiệp."
 )
 st.markdown("---")
 
