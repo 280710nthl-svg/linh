@@ -18,36 +18,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS giao diện Gradient hiện đại & Khung nội dung Glassmorphism
+# Custom CSS tiêu chuẩn, gọn gàng, nền mặc định sáng sủa
 st.markdown(
     """
     <style>
-    /* Nền Gradient đa tầng hiện đại, sang trọng, không bao giờ bị lỗi load ảnh */
-    .stApp {
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #eef2f3 100%);
-        background-attachment: fixed;
-    }
-
-    /* Khung chứa nội dung trắng sáng, bo góc mượt mà và đổ bóng nổi bật */
-    div.block-container {
-        background-color: rgba(255, 255, 255, 0.96);
-        padding: 2.5rem 3rem;
-        border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        margin-top: 2rem;
-        margin-bottom: 2rem;
-    }
-
-    /* Ép toàn bộ chữ trong khung sang màu tối dễ đọc, rõ nét */
-    div.block-container p, div.block-container span, div.block-container label, div.block-container div {
-        color: #212529 !important;
-    }
-
-    /* Màu sắc tiêu đề chính */
-    h1, h2, h3, h4 {
-        color: #1E3C72 !important;
-    }
-
     /* Thiết kế thanh Tab cao cấp */
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
@@ -720,7 +694,7 @@ with tab3:
 
             csv_bytes = err_df.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                label="📥 Tải Xuống Báo Cáo Lỗi Chi Tiết (CSV)",
+                label="📥 Tải Xuống File Báo Cáo Lỗi Chi Tiết (CSV)",
                 data=csv_bytes,
                 file_name=f"bao_cao_loi_phien_{view_id}.csv",
                 mime="text/csv",
