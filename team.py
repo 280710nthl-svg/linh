@@ -401,7 +401,6 @@ def load_uploaded_file(uploaded_file, header_row=0):
             else:
                 new_cols.append(str(col).strip())
         df.columns = new_cols
-        # Bỏ qua các dòng trống hoàn toàn hoặc chứa tiêu đề phụ
         df = df.dropna(how="all").reset_index(drop=True)
         return df
     except Exception as e:
@@ -411,7 +410,6 @@ def load_uploaded_file(uploaded_file, header_row=0):
 
 def validate_row(row, required_cols):
     errors = []
-    # Chỉ kiểm tra nếu tên cột thực sự tồn tại trong DataFrame để tránh lỗi kiểm tra nhầm cột rỗng
     for col in required_cols:
         if col in row:
             val = row.get(col)
@@ -550,7 +548,6 @@ if current_view == "📥 Tải File & Cấu Hình":
             st.session_state["df_cache"] = {}
 
         st.markdown("### ⚙️ Cấu Hình Dòng Tiêu Đề (Header Row)")
-        # Cho phép chọn dòng chứa tiêu đề nếu file Excel của bạn có dòng tiêu đề nằm ở hàng thứ 2, 3...
         header_row_idx = st.number_input(
             "Chọn số thứ tự dòng chứa tiêu đề (Dòng bắt đầu tính từ 0):",
             min_value=0, max_value=10, value=0, step=1,
@@ -927,4 +924,110 @@ elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
             target_session_id = st.selectbox(
                 "Chọn Mã Phiên muốn xuất file đánh dấu lỗi:",
                 available_ids,
-                index=available_ids.index(st.session_state["selected_target_session_id"]) if st.session_state["selected_target
+                index=(
+                    available_ids.index(
+                        st.session_state["selected_target_session_id"]
+                    )
+                    if st.session_state["selected_target_session_id"]
+                    in available_ids
+                    else 0
+                ),
+                key="select_session_for_marking_tab3",
+                format_func=lambda x: (
+                    f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
+                ),
+            )
+
+            if target_session_id != st.session_state["selected_target_session_id"]:
+                st.session_state["selected_target_session_id"] = target_session_id
+                st.rerun()
+
+            if target_session_id:
+                target_filename = history_df[history_df['id'] == target_session_id]['filename'].values[0]
+                export_df_source = None
+                
+                if "df_cache" in st.session_state and target_session_id in st.session_state["df_cache"]:
+                    export_df_source = st.session_state["df_cache"][target_session_id][0]
+                else:
+                    possible_path = os.path.join(UPLOAD_DIR, f"session_{target_session_id}_{target_filename}")
+                    if os.path.exists(possible_path):
+                        try:
+                            if target_filename.endswith(".csv"):
+                                export_df_source = pd.read_csv(possible_path, encoding="utf-8-sig")
+                            elif target_filename.endswith((".xlsx", ".xls")):
+                                export_df_source = pd.read_excel(possible_path)
+                            elif target_filename.endswith(".json"):
+                                export_df_source = pd.read_json(possible_path)
+                        except:
+                            pass
+                    
+                    if export_df_source is None:
+                        export_df_source = reconstruct_df_from_db(target_session_id)
+
+                if export_df_source is not None:
+                    marked_buffer = export_marked_file_to_excel(
+                        target_session_id, export_df_source
+                    )
+                    st.download_button(
+                        label=f"📝 Tải File Gốc Đánh Dấu Lỗi (Phiên #{target_session_id})",
+                        data=marked_buffer,
+                        file_name=f"DataClean_File_Goc_Dau_Loi_Phiên_{target_session_id}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        key="dl_btn_marked_excel"
+                    )
+                else:
+                    st.info(
+                        "💡 Không tìm thấy dữ liệu gốc để xuất file đánh dấu lỗi."
+                    )
+    else:
+        st.info("Chưa có phiên nhập dữ liệu nào trong hệ thống.")
+
+    st.markdown("---")
+    st.subheader("🔍 Tra Cứu Dòng Lỗi Chi Tiết")
+    
+    lookup_default_id = st.session_state.get(
+        "selected_target_session_id",
+        available_ids[0] if 'available_ids' in locals() and available_ids else 1,
+    )
+
+    view_id = st.selectbox(
+        "Chọn Mã Phiên muốn xem chi tiết dòng lỗi:",
+        history_df["id"].tolist() if not history_df.empty else [1],
+        index=(
+            history_df["id"].tolist().index(lookup_default_id)
+            if not history_df.empty
+            and lookup_default_id in history_df["id"].tolist()
+            else 0
+        ),
+        key="selectbox_lookup_error_id",
+        format_func=lambda x: (
+            f"Phiên #{x} - {history_df[history_df['id'] == x]['filename'].values[0] if not history_df[history_df['id'] == x].empty else ''}"
+        ),
+    )
+
+    if st.button("🔍 Trích Xuất Dữ Liệu Lỗi", key="btn_lookup_error_details"):
+        err_df = pd.read_sql_query(
+            f"SELECT row_number AS 'Dòng số', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_id}",
+            conn,
+        )
+
+        if not err_df.empty:
+            st.error(
+                f"⚠️ Phát hiện tổng cộng **{len(err_df)}** dòng lỗi ở Phiên #{view_id}:"
+            )
+            st.dataframe(err_df, use_container_width=True)
+
+            csv_bytes = err_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                label="📥 Tải Báo Cáo Lỗi Chi Tiết (CSV)",
+                data=csv_bytes,
+                file_name=f"DataClean_Bao_Cao_Loi_Phiên_{view_id}.csv",
+                mime="text/csv",
+                key="dl_btn_error_csv"
+            )
+        else:
+            st.success(
+                f"🎉 Phiên #{view_id} hoàn toàn chính xác, không có dòng lỗi nào!"
+            )
+    conn.close()
