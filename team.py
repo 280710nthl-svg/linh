@@ -10,31 +10,26 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
 import streamlit as st
 
-# 1. Cấu hình giao diện trang web chuẩn Dashboard Chuyên Nghiệp
+# 1. Cấu hình giao diện trang web chuẩn Sản phẩm App Chuyên Nghiệp
 st.set_page_config(
-    page_title="DA11 - Hệ Thống Quản Lý & Kiểm Tra Dữ Liệu",
+    page_title="DataClean Pro - Hệ Thống Xử Lý & Kiểm Tra Dữ Liệu Thông Minh",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS giao diện Dark Mode dạng Card Layout hiện đại
+# Custom CSS giao diện Dark Mode hiện đại dạng Card
 st.markdown(
     """
     <style>
-    /* Tổng thể nền trang màu đen xám hiện đại (Dark Theme) */
     .stApp {
         background-color: #121212;
         color: #e0e0e0;
     }
-
-    /* Thanh Sidebar tối màu sang trọng */
     [data-testid="stSidebar"] {
         background-color: #1a1a1a;
         border-right: 1px solid #2d2d2d;
     }
-
-    /* Khung chứa nội dung chính dạng thẻ (Card) tối màu */
     div.block-container {
         background-color: #1e1e1e;
         padding: 2.5rem 3rem;
@@ -44,18 +39,12 @@ st.markdown(
         margin-bottom: 2rem;
         border: 1px solid #2d2d2d;
     }
-
-    /* Ép chữ trong khung sang màu sáng dễ đọc */
     div.block-container p, div.block-container span, div.block-container label, div.block-container div {
         color: #e0e0e0 !important;
     }
-
-    /* Màu sắc tiêu đề nổi bật */
     h1, h2, h3, h4 {
         color: #ffffff !important;
     }
-
-    /* Thiết kế thanh Tab cao cấp dạng thẻ nổi */
     .stTabs [data-baseweb="tab-list"] {
         gap: 12px;
         background-color: #252525;
@@ -79,8 +68,6 @@ st.markdown(
     .stTabs [aria-selected="true"] p {
         color: #ffffff !important;
     }
-
-    /* Thẻ Metric thông số kiểu Card */
     div[data-testid="stMetric"] {
         background-color: #252525;
         padding: 18px 22px;
@@ -97,8 +84,6 @@ st.markdown(
     div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
         color: #ffffff !important;
     }
-
-    /* Nút bấm tương tác hiện đại */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -111,18 +96,15 @@ st.markdown(
     .stButton>button:hover {
         background-color: #2563eb;
     }
-
-    /* Expander và bảng dữ liệu tối ưu */
-    .streamlit-expanderHeader {
-        background-color: #252525;
-        border-radius: 8px;
-    }
+    
+    /* Nút bấm Menu Sidebar giả lập đường dẫn Tab */
+    div[data-testid="stSidebarNav"] {display: none;}
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-DB_NAME = "da11_full_integrated.db"
+DB_NAME = "dataclean_app_integrated.db"
 
 
 # 2. Khởi tạo Cơ sở dữ liệu SQLite
@@ -175,9 +157,9 @@ def export_history_to_excel(df_history):
     ws = wb.active
     ws.title = "Lich_Su_Phien"
 
-    ws.merge_cells("A1:H1")
+    ws.merge_cells("A1:I1")
     title_cell = ws["A1"]
-    title_cell.value = "DANH SÁCH LỊCH SỬ CÁC PHIÊN NHẬP DỮ LIỆU - DA11"
+    title_cell.value = "DANH SÁCH LỊCH SỬ CÁC PHIÊN NHẬP DỮ LIỆU - DATACLEAN PRO"
     title_cell.font = Font(name="Calibri", size=13, bold=True, color="FFFFFF")
     title_cell.fill = PatternFill(
         start_color="1E3C72", end_color="1E3C72", fill_type="solid"
@@ -192,6 +174,7 @@ def export_history_to_excel(df_history):
         "Số dòng đã xử lý",
         "Số dòng hợp lệ",
         "Số dòng bị lỗi",
+        "Tỉ lệ sai",
         "Trạng thái",
         "Thời gian tạo",
     ]
@@ -210,7 +193,7 @@ def export_history_to_excel(df_history):
     )
 
     ws.row_dimensions[3].height = 25
-    for col_num in range(1, 9):
+    for col_num in range(1, 10):
         cell = ws.cell(row=3, column=col_num)
         cell.fill = header_fill
         cell.font = header_font
@@ -220,6 +203,9 @@ def export_history_to_excel(df_history):
 
     for row_idx, row in enumerate(df_history.itertuples(), start=4):
         session_id_str = f"#{row.id}"
+        total = row.total_rows if row.total_rows > 0 else 1
+        error_rate = f"{(row.invalid_rows / total) * 100:.2f}%"
+
         row_data = [
             session_id_str,
             row.filename,
@@ -227,21 +213,22 @@ def export_history_to_excel(df_history):
             row.processed_rows,
             row.valid_rows,
             row.invalid_rows,
+            error_rate,
             row.status,
             str(row.created_at),
         ]
         ws.append(row_data)
         ws.row_dimensions[row_idx].height = 22
 
-        for col_idx in range(1, 9):
+        for col_idx in range(1, 10):
             c = ws.cell(row=row_idx, column=col_idx)
             c.border = thin_border
-            if col_idx in [1, 3, 4, 5, 6, 7, 8]:
+            if col_idx in [1, 3, 4, 5, 6, 7, 8, 9]:
                 c.alignment = Alignment(horizontal="center", vertical="center")
             else:
                 c.alignment = Alignment(horizontal="left", vertical="center")
 
-    col_widths = [12, 32, 16, 18, 16, 16, 16, 22]
+    col_widths = [12, 32, 16, 18, 16, 16, 14, 16, 22]
     for i, w in enumerate(col_widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
@@ -450,105 +437,138 @@ def process_data_background(session_id, df, required_cols, start_row=0):
         conn.close()
 
 
-# 7. Sidebar Thông tin & Điều hướng
+# 7. Quản lý trạng thái chuyển Tab thông minh từ Menu Sidebar
+if "selected_nav" not in st.session_state:
+    st.session_state["selected_nav"] = "📥 Tải File & Cấu Hình"
+
 with st.sidebar:
-    st.title("⚡ DA11 Dashboard")
-    st.caption("Hệ Thống Quản Lý Dữ Liệu")
+    st.title("⚡ DataClean Pro")
+    st.caption("Hệ Thống Kiểm Tra Dữ Liệu Tự Động")
     st.markdown("---")
 
     st.markdown("### **Menu Chức Năng**")
-    st.markdown("📊 **Tổng Quan Hệ Thống**")
-    st.markdown("📁 **Quản Lý Tệp Tải Lên**")
-    st.markdown("⚙️ **Cấu Hình Quy Tắc Lỗi**")
-    st.markdown("📜 **Lịch Sử Phiên Làm Việc**")
+
+    # Các nút Menu có khả năng click để đổi trang/tab trực tiếp
+    if st.button("📥 Tải File & Cấu Hình", use_container_width=True):
+        st.session_state["selected_nav"] = "📥 Tải File & Cấu Hình"
+        st.rerun()
+
+    if st.button("🔄 Quản Lý Phiên & Tiến Độ", use_container_width=True):
+        st.session_state["selected_nav"] = "🔄 Quản Lý Phiên & Tiếp Tục (Resume)"
+        st.rerun()
+
+    if st.button("📜 Lịch Sử & Xuất File", use_container_width=True):
+        st.session_state["selected_nav"] = "📜 Lịch Sử & Xuất File Báo Cáo"
+        st.rerun()
 
     st.markdown("---")
     with st.expander("📖 **Giới Thiệu & Hướng Dẫn**", expanded=False):
         st.write(
-            "Hệ thống kiểm tra dữ liệu lớn (5000+ dòng), chạy ngầm mượt mà, "
-            "khôi phục tiến trình khi gián đoạn và xuất báo cáo Excel chuyên nghiệp."
+            "Phần mềm hỗ trợ kiểm tra dữ liệu lớn (5000+ dòng), tải nhiều file cùng lúc, "
+            "tự động quét lỗi khuyết thiếu, chạy ngầm mượt mà và xuất báo cáo Excel chuyên nghiệp."
         )
 
-
-# 8. Giao diện tiêu đề chính
-st.title("⚡ DA11 - Quản Lý Nhập Dữ Liệu & Kiểm Tra Lỗi")
+# Tiêu đề chính của ứng dụng
+st.title("⚡ DataClean Pro - Hệ Thống Kiểm Tra & Chuẩn Hóa Dữ Liệu")
 st.caption(
-    "Ứng dụng xử lý tệp lớn mượt mà, hỗ trợ chạy ngầm độc lập, khôi phục khi gián đoạn và xuất báo cáo Excel chuyên nghiệp."
+    "Giải pháp xử lý tệp lớn thông minh, chạy ngầm độc lập, tự động phát hiện lỗi và xuất báo cáo Excel."
 )
 st.markdown("---")
 
-tab1, tab2, tab3 = st.tabs(
-    [
-        "📥 Tải File & Cấu Hình",
-        "🔄 Quản Lý Phiên & Tiếp Tục (Resume)",
-        "📜 Lịch Sử & Xuất File Báo Cáo",
-    ]
-)
+# Danh sách Tab chính của ứng dụng
+tab_options = [
+    "📥 Tải File & Cấu Hình",
+    "🔄 Quản Lý Phiên & Tiếp Tục (Resume)",
+    "📜 Lịch Sử & Xuất File Báo Cáo",
+]
+
+# Tự động chọn Tab theo Lựa chọn của Menu Sidebar
+default_tab_idx = 0
+if st.session_state["selected_nav"] in tab_options:
+    default_tab_idx = tab_options.index(st.session_state["selected_nav"])
+
+# Khởi tạo các Tab trên giao diện
+tab1, tab2, tab3 = st.tabs(tab_options)
 
 # --- TAB 1: TẢI FILE & CẤU HÌNH ---
 with tab1:
-    st.subheader("1. Tải lên tệp dữ liệu doanh nghiệp")
-    uploaded_file = st.file_uploader(
-        "Kéo thả hoặc chọn tệp dữ liệu của bạn (Hỗ trợ CSV, Excel, JSON):",
+    st.subheader(
+        "1. Tải lên tệp dữ liệu (Hỗ trợ tải nhiều file CSV, Excel, JSON cùng lúc)"
+    )
+    uploaded_files = st.file_uploader(
+        "Kéo thả hoặc chọn các tệp dữ liệu của bạn:",
         type=["csv", "xlsx", "xls", "json"],
+        accept_multiple_files=True,
     )
 
-    if uploaded_file is not None:
-        df = load_uploaded_file(uploaded_file)
-        if df is not None:
-            st.success(
-                f"📄 Đã tải tệp thành công: **{uploaded_file.name}** | Tổng số dòng: **{len(df):,}** | Số cột: **{len(df.columns)}**"
-            )
+    if uploaded_files:
+        st.success(
+            f"📄 Đã tải lên thành công tổng cộng **{len(uploaded_files)}** tệp dữ liệu!"
+        )
 
-            st.session_state["current_raw_df"] = df
+        if "df_cache" not in st.session_state:
+            st.session_state["df_cache"] = {}
 
-            with st.expander(
-                "🔍 Xem trước 5 dòng dữ liệu đầu tiên (Đã chuẩn hóa tên cột)"
-            ):
-                st.dataframe(df.head(), use_container_width=True)
+        for idx, uploaded_file in enumerate(uploaded_files):
+            df = load_uploaded_file(uploaded_file)
+            if df is not None:
+                with st.expander(
+                    f"📁 Tệp {idx+1}: {uploaded_file.name} (Tổng dòng: {len(df):,}, Số cột: {len(df.columns)})",
+                    expanded=True,
+                ):
+                    st.dataframe(df.head(), use_container_width=True)
 
-            st.subheader("2. Thiết lập quy tắc kiểm tra dữ liệu")
-            all_cols = df.columns.tolist()
-            required_cols = st.multiselect(
-                "Chọn các cột BẮT BUỘC phải có dữ liệu (Không được để trống):",
-                options=all_cols,
-                default=all_cols[: min(2, len(all_cols))],
-            )
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🚀 Bắt Đầu Xử Lý Dữ Liệu", type="primary"):
-                conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO import_sessions (filename, total_rows, status) VALUES (?, ?, 'ĐANG CHẠY')",
-                    (uploaded_file.name, len(df)),
+                st.markdown(
+                    f"**2. Quy tắc kiểm tra cột bắt buộc cho: `{uploaded_file.name}`**"
                 )
-                session_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
+                all_cols = df.columns.tolist()
 
-                if "df_cache" not in st.session_state:
-                    st.session_state["df_cache"] = {}
-                st.session_state["df_cache"][session_id] = (df, required_cols)
+                # Tự động Select All toàn bộ các cột
+                required_cols = st.multiselect(
+                    f"Chọn các cột BẮT BUỘC phải có dữ liệu (File {idx+1}):",
+                    options=all_cols,
+                    default=all_cols,  # Select All mặc định
+                    key=f"req_cols_{idx}_{uploaded_file.name}",
+                )
 
-                thread = threading.Thread(
-                    target=process_data_background,
-                    args=(session_id, df, required_cols, 0),
-                )
-                thread.daemon = True
-                thread.start()
+                st.session_state["current_raw_df"] = df
 
-                st.success(
-                    f"🎉 Đã khởi tạo và bắt đầu xử lý thành công Phiên nhập **#{session_id}**!"
-                )
-                st.info(
-                    "👉 Hãy chuyển sang Tab **'Quản Lý Phiên & Tiếp Tục (Resume)'** để theo dõi tiến trình thời gian thực."
-                )
+                if st.button(
+                    f"🚀 Bắt Đầu Xử Lý Tệp: {uploaded_file.name}",
+                    key=f"btn_process_{idx}_{uploaded_file.name}",
+                    type="primary",
+                ):
+                    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO import_sessions (filename, total_rows, status) VALUES (?, ?, 'ĐANG CHẠY')",
+                        (uploaded_file.name, len(df)),
+                    )
+                    session_id = cursor.lastrowid
+                    conn.commit()
+                    conn.close()
+
+                    st.session_state["df_cache"][session_id] = (df, required_cols)
+
+                    thread = threading.Thread(
+                        target=process_data_background,
+                        args=(session_id, df, required_cols, 0),
+                    )
+                    thread.daemon = True
+                    thread.start()
+
+                    st.session_state["latest_session_id"] = session_id
+
+                    # Tự động chuyển hướng giao diện sang Tab "Quản Lý Phiên & Tiếp Tục"
+                    st.session_state["selected_nav"] = (
+                        "🔄 Quản Lý Phiên & Tiếp Tục (Resume)"
+                    )
+                    st.rerun()
 
 # --- TAB 2: QUẢN LÝ PHIÊN & RESUME ---
 with tab2:
     st.subheader(
-        "🔄 Theo Dõi Tiến Độ Thời Gian Thực & Tiếp Tục Khi Gián Đoạn"
+        "🔄 Theo Dõi Tiến Độ Thời Gian Thực & Khôi Phục Phiên Gián Đoạn"
     )
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     sessions_df = pd.read_sql_query(
@@ -558,6 +578,12 @@ with tab2:
 
     if not sessions_df.empty:
         display_df = sessions_df.copy()
+        display_df["Tỉ lệ sai"] = display_df.apply(
+            lambda r: f"{(r['invalid_rows'] / r['total_rows']) * 100:.2f}%"
+            if r["total_rows"] > 0
+            else "0.00%",
+            axis=1,
+        )
         display_df["id"] = display_df["id"].apply(lambda x: f"#{x}")
         display_df.columns = [
             "Mã phiên",
@@ -568,12 +594,34 @@ with tab2:
             "Số dòng bị lỗi",
             "Trạng thái",
             "Thời gian tạo",
+            "Tỉ lệ sai",
         ]
+        display_df = display_df[[
+            "Mã phiên",
+            "Tên tệp dữ liệu",
+            "Tổng số dòng",
+            "Số dòng đã xử lý",
+            "Số dòng hợp lệ",
+            "Số dòng bị lỗi",
+            "Tỉ lệ sai",
+            "Trạng thái",
+            "Thời gian tạo",
+        ]]
         st.dataframe(display_df, use_container_width=True)
 
+        default_index = 0
+        if (
+            "latest_session_id" in st.session_state
+            and st.session_state["latest_session_id"] in sessions_df["id"].tolist()
+        ):
+            default_index = sessions_df["id"].tolist().index(
+                st.session_state["latest_session_id"]
+            )
+
         selected_id = st.selectbox(
-            "Chọn ID Phiên cần theo dõi hoặc thao tác:",
+            "Chọn ID Phiên cần theo dõi chi tiết:",
             sessions_df["id"].tolist(),
+            index=default_index,
         )
 
         if selected_id:
@@ -589,12 +637,13 @@ with tab2:
             valid = info["valid_rows"]
             invalid = info["invalid_rows"]
             pct = (processed / total) if total > 0 else 0
+            error_rate_val = (invalid / total * 100) if total > 0 else 0
 
             st.markdown("---")
-            st.markdown(f"#### 📊 Trạng thái chi tiết Phiên #{selected_id}")
+            st.markdown(f"#### 📊 Chi tiết tiến độ Phiên #{selected_id}")
             st.progress(pct)
 
-            m1, m2, m3, m4 = st.columns(4)
+            m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric(label="📁 Tổng số dòng", value=f"{total:,}")
             m2.metric(
                 label="⚙️ Đã xử lý",
@@ -607,11 +656,12 @@ with tab2:
                 value=f"{invalid:,}",
                 delta_color="inverse",
             )
+            m5.metric(label="📉 Tỉ lệ sai", value=f"{error_rate_val:.2f}%")
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                if st.button("🔄 Làm Mới Trạng Thái"):
+                if st.button("🔄 Cập Nhật Trạng Thái"):
                     st.rerun()
             with col_btn2:
                 if status != "HOÀN THÀNH" and processed < total:
@@ -637,7 +687,7 @@ with tab2:
                             t_resume.daemon = True
                             t_resume.start()
                             st.success(
-                                f"Đã khôi phục và tiếp tục chạy Phiên #{selected_id} từ dòng số {processed + 1}!"
+                                f"Đã khôi phục thành công Phiên #{selected_id} từ dòng số {processed + 1}!"
                             )
                             st.rerun()
                         else:
@@ -649,7 +699,7 @@ with tab2:
 
 # --- TAB 3: LỊCH SỬ & XUẤT EXCEL BÁO CÁO ---
 with tab3:
-    st.subheader("📜 Danh Sách Lịch Sử Các Phiên Nhập Dữ Liệu")
+    st.subheader("📜 Bảng Lịch Sử & Xuất Báo Cáo Xử Lý")
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     history_df = pd.read_sql_query(
         "SELECT * FROM import_sessions ORDER BY id DESC", conn
@@ -657,6 +707,12 @@ with tab3:
 
     if not history_df.empty:
         view_history = history_df.copy()
+        view_history["Tỉ lệ sai"] = view_history.apply(
+            lambda r: f"{(r['invalid_rows'] / r['total_rows']) * 100:.2f}%"
+            if r["total_rows"] > 0
+            else "0.00%",
+            axis=1,
+        )
         view_history["id"] = view_history["id"].apply(lambda x: f"#{x}")
         view_history.columns = [
             "Mã phiên",
@@ -667,32 +723,44 @@ with tab3:
             "Số dòng bị lỗi",
             "Trạng thái",
             "Thời gian tạo",
+            "Tỉ lệ sai",
         ]
+        view_history = view_history[[
+            "Mã phiên",
+            "Tên tệp dữ liệu",
+            "Tổng số dòng",
+            "Số dòng đã xử lý",
+            "Số dòng hợp lệ",
+            "Số dòng bị lỗi",
+            "Tỉ lệ sai",
+            "Trạng thái",
+            "Thời gian tạo",
+        ]]
         st.dataframe(view_history, use_container_width=True)
 
         st.markdown("---")
-        st.subheader("📥 Khu Vực Xuất File Báo Cáo Chuyên Nghiệp")
+        st.subheader("📥 Xuất Báo Cáo Định Dạng Excel Chuyên Nghiệp")
 
         col_ex1, col_ex2 = st.columns(2)
 
         with col_ex1:
             st.markdown("#### 1. Báo cáo lịch sử phiên")
             st.write(
-                "Xuất toàn bộ danh sách phiên làm việc ra tệp Excel định dạng chuẩn."
+                "Tải danh sách phiên làm việc tổng hợp kèm theo tỉ lệ sai."
             )
             excel_buffer = export_history_to_excel(history_df)
             st.download_button(
                 label="📊 Tải Báo Cáo Lịch Sử Phiên (Excel)",
                 data=excel_buffer,
-                file_name="Danh_Sach_Lich_Su_Phien_DA11.xlsx",
+                file_name="DataClean_Lich_Su_Phien.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
             )
 
         with col_ex2:
-            st.markdown("#### 2. File gốc đánh dấu lỗi")
+            st.markdown("#### 2. File gốc đánh dấu ô lỗi")
             st.write(
-                "Tải tệp dữ liệu gốc có gắn thêm cột ghi chú và tô màu đỏ các dòng lỗi."
+                "Tải tệp dữ liệu gốc có thêm cột ghi chú và tô đỏ các dòng lỗi."
             )
             target_session_id = st.selectbox(
                 "Chọn Mã Phiên muốn xuất file đánh dấu lỗi:",
@@ -711,27 +779,27 @@ with tab3:
                     st.download_button(
                         label=f"📝 Tải File Gốc Đánh Dấu Lỗi (Phiên #{target_session_id})",
                         data=marked_buffer,
-                        file_name=f"file_goc_danh_dau_loi_phien_{target_session_id}.xlsx",
+                        file_name=f"DataClean_File_Goc_Dau_Loi_Phien_{target_session_id}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
                     )
                 else:
                     st.info(
-                        "💡 Vui lòng tải file tại Tab 1 để hệ thống lưu cache xuất file đánh dấu lỗi."
+                        "💡 Vui lòng tải file tại Tab 1 để lưu cache xuất file đánh dấu lỗi."
                     )
     else:
         st.info("Chưa có dữ liệu lịch sử phiên nhập nào.")
 
     st.markdown("---")
-    st.subheader("🔍 Tra Cứu & Trích Xuất Dòng Lỗi Chi Tiết")
+    st.subheader("🔍 Tra Cứu Dòng Lỗi Chi Tiết")
     view_id = st.number_input(
-        "Nhập ID Phiên muốn xem danh sách dòng lỗi:",
+        "Nhập ID Phiên muốn xem chi tiết dòng lỗi:",
         min_value=1,
         step=1,
         value=1,
     )
 
-    if st.button("🔍 Xem Chi Tiết Lỗi"):
+    if st.button("🔍 Trích Xuất Dữ Liệu Lỗi"):
         err_df = pd.read_sql_query(
             f"SELECT row_number AS 'Dòng số', error_reason AS 'Lý do lỗi' FROM invalid_data WHERE session_id = {view_id}",
             conn,
@@ -745,9 +813,9 @@ with tab3:
 
             csv_bytes = err_df.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                label="📥 Tải Xuống Báo Cáo Lỗi Chi Tiết (CSV)",
+                label="📥 Tải Báo Cáo Lỗi Chi Tiết (CSV)",
                 data=csv_bytes,
-                file_name=f"bao_cao_loi_phien_{view_id}.csv",
+                file_name=f"DataClean_Bao_Cao_Loi_Phien_{view_id}.csv",
                 mime="text/csv",
             )
         else:
