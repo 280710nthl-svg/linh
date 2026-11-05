@@ -19,6 +19,7 @@ st.set_page_config(
 )
 
 # Custom CSS tích hợp ảnh nền phong cảnh và khung nội dung bo góc mờ ảo (Glassmorphism)
+# Custom CSS chỉnh sửa màu chữ và nền hiển thị sắc nét
 st.markdown(
     """
     <style>
@@ -31,9 +32,9 @@ st.markdown(
         background-attachment: fixed;
     }
 
-    /* 2. Tùy chỉnh khung chứa nội dung dạng trắng mờ để nổi bật trên nền ảnh */
+    /* 2. Khung chứa nội dung màu trắng đục rõ nét để không bị chìm chữ */
     div.block-container {
-        background-color: rgba(255, 255, 255, 0.92);
+        background-color: #ffffff;
         padding: 2.5rem 3rem;
         border-radius: 15px;
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
@@ -41,12 +42,17 @@ st.markdown(
         margin-bottom: 2rem;
     }
 
-    /* 3. Màu sắc tiêu đề chính */
-    h1 {
+    /* 3. Ép toàn bộ chữ trong khung sang màu tối dễ đọc */
+    div.block-container p, div.block-container span, div.block-container label, div.block-container div {
+        color: #212529 !important;
+    }
+
+    /* 4. Màu sắc tiêu đề chính */
+    h1, h2, h3, h4 {
         color: #1E3C72 !important;
     }
 
-    /* 4. Thiết kế thanh Tab cao cấp */
+    /* 5. Thiết kế thanh Tab cao cấp */
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
         background-color: #e9ecef;
@@ -66,17 +72,20 @@ st.markdown(
         color: #ffffff !important;
         box-shadow: 0 4px 10px rgba(30, 60, 114, 0.25);
     }
+    .stTabs [aria-selected="true"] p {
+        color: #ffffff !important;
+    }
 
-    /* 5. Thẻ Metric thông số */
+    /* 6. Thẻ Metric thông số */
     div[data-testid="stMetric"] {
-        background-color: #ffffff;
+        background-color: #f8f9fa;
         padding: 16px 20px;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         border-left: 5px solid #1E3C72;
     }
 
-    /* 6. Nút bấm tương tác */
+    /* 7. Nút bấm tương tác */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -87,7 +96,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
 DB_NAME = "da11_full_integrated.db"
 
 
