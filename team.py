@@ -12,55 +12,110 @@ import streamlit as st
 
 # 1. Cấu hình giao diện trang web chuẩn Dashboard Chuyên Nghiệp
 st.set_page_config(
-    page_title="DA11 - Hệ Thống Quản Lý & Kiểm Tra Dữ Liệu Thông Minh",
+    page_title="DA11 - Hệ Thống Quản Lý & Kiểm Tra Dữ Liệu",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS tiêu chuẩn, gọn gàng, nền mặc định sáng sủa
+# Custom CSS giao diện Dark Mode dạng Card Layout hiện đại
 st.markdown(
     """
     <style>
-    /* Thiết kế thanh Tab cao cấp */
+    /* Tổng thể nền trang màu đen xám hiện đại (Dark Theme) */
+    .stApp {
+        background-color: #121212;
+        color: #e0e0e0;
+    }
+
+    /* Thanh Sidebar tối màu sang trọng */
+    [data-testid="stSidebar"] {
+        background-color: #1a1a1a;
+        border-right: 1px solid #2d2d2d;
+    }
+
+    /* Khung chứa nội dung chính dạng thẻ (Card) tối màu */
+    div.block-container {
+        background-color: #1e1e1e;
+        padding: 2.5rem 3rem;
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        margin-top: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid #2d2d2d;
+    }
+
+    /* Ép chữ trong khung sang màu sáng dễ đọc */
+    div.block-container p, div.block-container span, div.block-container label, div.block-container div {
+        color: #e0e0e0 !important;
+    }
+
+    /* Màu sắc tiêu đề nổi bật */
+    h1, h2, h3, h4 {
+        color: #ffffff !important;
+    }
+
+    /* Thiết kế thanh Tab cao cấp dạng thẻ nổi */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: #e9ecef;
+        gap: 12px;
+        background-color: #252525;
         padding: 8px 12px;
-        border-radius: 10px;
+        border-radius: 12px;
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 8px;
         padding: 10px 24px;
         font-weight: 600;
-        color: #495057;
+        color: #b0b0b0;
         border: none;
+        background-color: #2a2a2a;
         transition: all 0.3s ease;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #1E3C72 !important;
+        background-color: #3b82f6 !important;
         color: #ffffff !important;
-        box-shadow: 0 4px 10px rgba(30, 60, 114, 0.25);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
     }
     .stTabs [aria-selected="true"] p {
         color: #ffffff !important;
     }
 
-    /* Thẻ Metric thông số */
+    /* Thẻ Metric thông số kiểu Card */
     div[data-testid="stMetric"] {
-        background-color: #f8f9fa;
-        padding: 16px 20px;
+        background-color: #252525;
+        padding: 18px 22px;
         border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        border-left: 5px solid #1E3C72;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        border-left: 5px solid #3b82f6;
+        border-top: 1px solid #333333;
+        border-right: 1px solid #333333;
+        border-bottom: 1px solid #333333;
+    }
+    div[data-testid="stMetric"] label {
+        color: #9ca3af !important;
+    }
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #ffffff !important;
     }
 
-    /* Nút bấm tương tác */
+    /* Nút bấm tương tác hiện đại */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
         padding: 10px 24px;
+        background-color: #3b82f6;
+        color: #ffffff;
+        border: none;
         transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #2563eb;
+    }
+
+    /* Expander và bảng dữ liệu tối ưu */
+    .streamlit-expanderHeader {
+        background-color: #252525;
+        border-radius: 8px;
     }
     </style>
 """,
@@ -395,32 +450,28 @@ def process_data_background(session_id, df, required_cols, start_row=0):
         conn.close()
 
 
-# 7. Sidebar Thông tin & Hướng dẫn sử dụng
+# 7. Sidebar Thông tin & Điều hướng
 with st.sidebar:
     st.title("⚡ DA11 Dashboard")
-    st.caption("Phiên bản 2.0 | Hệ Thống Xử Lý Dữ Liệu")
+    st.caption("Hệ Thống Quản Lý Dữ Liệu")
     st.markdown("---")
 
-    with st.expander("📖 **GIỚI THIỆU DỰ ÁN**", expanded=True):
+    st.markdown("### **Menu Chức Năng**")
+    st.markdown("📊 **Tổng Quan Hệ Thống**")
+    st.markdown("📁 **Quản Lý Tệp Tải Lên**")
+    st.markdown("⚙️ **Cấu Hình Quy Tắc Lỗi**")
+    st.markdown("📜 **Lịch Sử Phiên Làm Việc**")
+
+    st.markdown("---")
+    with st.expander("📖 **Giới Thiệu & Hướng Dẫn**", expanded=False):
         st.write(
-            "Hệ thống giúp kiểm tra dữ liệu lớn (5.000+ dòng), tự động phát hiện lỗi trống, "
-            "chạy ngầm mượt mà và khôi phục từ điểm dừng khi gặp sự cố."
+            "Hệ thống kiểm tra dữ liệu lớn (5000+ dòng), chạy ngầm mượt mà, "
+            "khôi phục tiến trình khi gián đoạn và xuất báo cáo Excel chuyên nghiệp."
         )
-
-    with st.expander("🛠️ **HƯỚNG DẪN SỬ DỤNG**"):
-        st.markdown("""
-        **Bước 1:** Tại **Tab 1**, tải tệp (CSV/Excel/JSON) và chọn cột bắt buộc.  
-        **Bước 2:** Bấm `Bắt Đầu Xử Lý Dữ Liệu`.  
-        **Bước 3:** Chuyển sang **Tab 2** để theo dõi tiến độ hoặc bấm `Resume` nếu bị gián đoạn.  
-        **Bước 4:** Tại **Tab 3**, tải báo cáo lịch sử hoặc xuất file gốc được tô đỏ ô lỗi.
-        """)
-
-    st.markdown("---")
-    st.info("💡 **Mẹo:** Xuất file Excel đánh dấu lỗi để tô màu đỏ các ô bị khuyết dữ liệu.")
 
 
 # 8. Giao diện tiêu đề chính
-st.title("⚡ DA11 - Quản Lý Nhập Dữ Liệu & Kiểm Tra Lỗi Thông Minh")
+st.title("⚡ DA11 - Quản Lý Nhập Dữ Liệu & Kiểm Tra Lỗi")
 st.caption(
     "Ứng dụng xử lý tệp lớn mượt mà, hỗ trợ chạy ngầm độc lập, khôi phục khi gián đoạn và xuất báo cáo Excel chuyên nghiệp."
 )
@@ -694,7 +745,7 @@ with tab3:
 
             csv_bytes = err_df.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                label="📥 Tải Xuống File Báo Cáo Lỗi Chi Tiết (CSV)",
+                label="📥 Tải Xuống Báo Cáo Lỗi Chi Tiết (CSV)",
                 data=csv_bytes,
                 file_name=f"bao_cao_loi_phien_{view_id}.csv",
                 mime="text/csv",
