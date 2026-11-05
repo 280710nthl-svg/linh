@@ -113,7 +113,7 @@ st.markdown(
 DB_NAME = "dataclean_app_integrated.db"
 
 
-# 2. Khởi tạo Cơ sở dữ liệu SQLite & Tự động cập nhật cột file_hash nếu chưa có
+# 2. Khởi tạo Cơ sở dữ liệu SQLite & Tự động vá lỗi thiếu cột file_hash
 def init_db():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -132,11 +132,12 @@ def init_db():
         )
     """)
 
-    # Kiểm tra và tự động thêm cột file_hash nếu database cũ chưa có
+    # Kiểm tra an toàn xem bảng đã có cột file_hash chưa, nếu chưa thì tự động thêm vào
     cursor.execute("PRAGMA table_info(import_sessions)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_hash" not in columns:
         cursor.execute("ALTER TABLE import_sessions ADD COLUMN file_hash TEXT")
+        conn.commit()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS valid_data (
@@ -527,10 +528,13 @@ if current_view == "📥 Tải File & Cấu Hình":
             f_hash = get_file_content_hash(file_bytes)
             file_hashes[uploaded_file.name] = f_hash
 
-            existing_session = pd.read_sql_query(
-                f"SELECT id, filename, status as created_status FROM import_sessions WHERE file_hash = '{f_hash}'",
-                conn_check,
-            )
+            try:
+                existing_session = pd.read_sql_query(
+                    f"SELECT id, filename, status as created_status FROM import_sessions WHERE file_hash = '{f_hash}'",
+                    conn_check,
+                )
+            except:
+                existing_session = pd.DataFrame()
 
             is_already_scanned = not existing_session.empty
             scanned_session_id = existing_session.iloc[0]["id"] if is_already_scanned else None
@@ -760,7 +764,7 @@ elif current_view == "🔄 Quản Lý Phiên & Tiếp Tục (Resume)":
     else:
         st.info("Chưa có phiên nhập dữ liệu nào trong hệ thống.")
 
-# --- VIEW 3: LỊCH SỬ & XUẤT EXCEL BÁO CÁO ---
+# --- VIEW 3: LỊCH SỬ & XUẤT FILE BÁO CÁO ---
 elif current_view == "📜 Lịch Sử & Xuất File Báo Cáo":
     st.subheader("📜 Bảng Lịch Sử & Xuất Báo Cáo Xử Lý")
     
